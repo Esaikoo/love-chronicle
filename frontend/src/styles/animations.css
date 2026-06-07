@@ -1,0 +1,128 @@
+@keyframes coverAura {
+  0%,
+  100% {
+    transform: scale(0.96);
+    opacity: 0.72;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.96;
+  }
+}
+
+@keyframes starDrift {
+  from {
+    background-position: 0 0, 0 0;
+  }
+  to {
+    background-position: 96px 96px, -56px 56px;
+  }
+}
+
+@keyframes heartRipple {
+  from {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  to {
+    transform: scale(24);
+    opacity: 0;
+  }
+}
+
+@keyframes softBreathe {
+  0%,
+  100% {
+    opacity: 0.58;
+    scale: 0.98;
+  }
+  50% {
+    opacity: 0.92;
+    scale: 1.04;
+  }
+}
+
+@keyframes idleBars {
+  0%,
+  100% {
+    transform: scaleY(0.78);
+  }
+  50% {
+    transform: scaleY(1.22);
+  }
+}
+
+@keyframes playerPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 126, 179, 0.36);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(255, 126, 179, 0);
+  }
+}
+
+@keyframes floatHeart {
+  from {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.75;
+  }
+  to {
+    transform: translate3d(18px, -112vh, 0) rotate(24deg);
+    opacity: 0;
+  }
+}
+
+@keyframes meteorFall {
+  0% {
+    transform: translate3d(18vw, -18vh, 0) rotate(-35deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.78;
+  }
+  100% {
+    transform: translate3d(-42vw, 118vh, 0) rotate(-35deg);
+    opacity: 0;
+  }
+}
+
+@keyframes floatPetal {
+  0% {
+    transform: translate3d(0, -8vh, 0) rotate(0deg);
+    opacity: 0;
+  }
+  14% {
+    opacity: 0.7;
+  }
+  100% {
+    transform: translate3d(32px, 112vh, 0) rotate(170deg);
+    opacity: 0;
+  }
+}
+
+@keyframes floatStarlight {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(0.72);
+    opacity: 0.12;
+  }
+  50% {
+    transform: translate3d(0, -24px, 0) scale(1.08);
+    opacity: 0.72;
+  }
+}
+
+@keyframes coverEnterBurst {
+  from {
+    transform: translate(-50%, -50%) scale(0.12);
+    opacity: 0.86;
+  }
+  to {
+    transform: translate(-50%, -50%) scale(3.6);
+    opacity: 0;
+  }
+}
