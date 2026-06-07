@@ -15,6 +15,11 @@ screenshots/
 __pycache__/
 .venv/
 .env
+*.tar
+*.sql
+*.bak
+*.backup
+uploads-backup*.tar.gz
 backend/app/**/__pycache__/
 backend/uploads/**/*
 !backend/uploads/**/

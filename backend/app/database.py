@@ -1,6 +1,15 @@
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+PROJECT_DIR = BACKEND_DIR.parent
+
+load_dotenv(PROJECT_DIR / ".env")
+load_dotenv(BACKEND_DIR / ".env", override=True)
 
 
 class Base(DeclarativeBase):

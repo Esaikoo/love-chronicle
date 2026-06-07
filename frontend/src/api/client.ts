@@ -1,6 +1,6 @@
 import type { CalendarNote, CheckinIndexStatus, CheckinItem, CheckinPhotoSearchResult, CountdownItem, HeartPhotoAsset, LetterItem, MusicTrackAsset, PreferenceItem, TravelImportResult, TravelPlan } from "../types";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:18080";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18080";
 const TOKEN_KEY = "love-chronicle:auth-token";
 const USER_KEY = "love-chronicle:current-user";
 const SESSION_KEY = "love-chronicle:session-id";
@@ -228,5 +228,6 @@ export function uploadWithProgress(kind: string, file: File, onProgress: (progre
 export function absoluteUrl(url?: string) {
   if (!url) return "";
   if (/^https?:\/\//.test(url)) return url;
+  if (!API_BASE_URL) return url;
   return `${API_BASE_URL}${url}`;
 }

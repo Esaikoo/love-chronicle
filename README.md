@@ -1,63 +1,53 @@
 # Love Chronicle
 
-`love-chronicle` 是一个粉色唯美风格的纪念册网站，前端用于展示和编辑内容，后端负责登录、数据持久化、文件上传、旅行攻略地图、访问统计等能力。
+`love-chronicle` 是一个给她看的纪念册网站。当前版本已经整理成普通部署优先的结构，不依赖 Docker 也可以在 Windows、本地 Linux 或 Ubuntu 服务器上运行。
 
-当前项目已经整理为适合提交 GitHub 的干净版本：仓库内不包含真实上传照片、音乐、打卡图片、旅行图片和数据库数据。
-
-## 功能概览
-
-- 封面登录：`LXQ`、`WLY`、`ZS` 三个账号入口，游客入口默认隐藏。
-- 首页：空心爱心照片墙、波浪音乐律动、底部播放器。
-- 相识日历：日期记录、评分、图片、特殊日期标记。
-- 未来约定：倒计时、封面、完成状态、旅行攻略。
-- 旅行攻略：Excel 导入/导出、真实地图展示、路线和地点时间线。
-- 喜好记录：分组、查看详情、编辑和删除。
-- 打卡记录：多图上传、叠放轮播、照片查找。
-- 信封 / 情书：信封卡片、打开动画、信纸阅读。
-- 后台访问统计：在线用户、IP、模块停留、全量访问记录分页筛选。
-
-## 技术栈
-
-前端：
-
-- React
-- Vite
-- TypeScript
-- Framer Motion
-- Lucide React
-
-后端：
-
-- Python
-- FastAPI
-- PostgreSQL
-- pgvector
-- Docker Compose
-
-文件存储：
-
-- 上传文件保存在 `backend/uploads/`
-- 数据库只保存文件路径和业务数据
-
-## 目录结构
+## 项目结构
 
 ```text
 love-chronicle/
-├─ frontend/                 # React + Vite 前端
-│  ├─ public/assets/          # 静态资源占位目录
-│  └─ src/
-├─ backend/                  # FastAPI 后端
+├─ frontend/                  # React + Vite + TypeScript
+├─ backend/                   # Python + FastAPI
 │  ├─ app/
-│  └─ uploads/               # 运行时上传文件，提交时只保留 .gitkeep
-├─ docker-compose.yml
+│  └─ uploads/                # 运行时上传文件，Git 只保留 .gitkeep
+├─ deploy/                    # systemd / nginx 示例配置
+├─ docs/
+│  └─ UBUNTU_NO_DOCKER.md     # Ubuntu 无 Docker 部署文档
 ├─ .env.example
-├─ .gitignore
 └─ README.md
 ```
 
-## 本地启动
+## 技术栈
 
-先复制环境变量：
+- 前端：React、Vite、TypeScript、Framer Motion、Lucide React
+- 后端：FastAPI、SQLAlchemy、PostgreSQL、pgvector
+- 运行方式：普通 Python 进程 + Nginx 静态站点 + PostgreSQL
+
+## 数据说明
+
+仓库已经清理为适合提交 GitHub 的干净版本：
+
+- 不包含真实照片、音乐、视频和上传文件
+- `frontend/src/data/mockPhotos.ts` 和 `mockMusic.ts` 为空数组
+- `backend/uploads/` 只保留 `.gitkeep`
+- `.env` 被 `.gitignore` 忽略，不应该提交
+
+## 本地普通启动
+
+### 1. 准备 PostgreSQL
+
+需要 PostgreSQL，并安装 pgvector 扩展。
+
+创建数据库和用户示例：
+
+```sql
+CREATE USER love_user WITH PASSWORD 'please_change_me';
+CREATE DATABASE love_chronicle OWNER love_user;
+\c love_chronicle
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+### 2. 配置环境变量
 
 ```bash
 cp .env.example .env
@@ -69,34 +59,92 @@ Windows PowerShell：
 Copy-Item .env.example .env
 ```
 
-启动：
+普通部署默认数据库配置：
 
-```bash
-docker compose up -d --build
+```env
+POSTGRES_DB=love_chronicle
+POSTGRES_USER=love_user
+POSTGRES_PASSWORD=please_change_me
+POSTGRES_HOST=127.0.0.1
+POSTGRES_PORT=5432
 ```
 
-查看日志：
+### 3. 启动后端
 
 ```bash
-docker compose logs -f
+cd backend
+python -m venv .venv
 ```
 
-停止：
+Windows PowerShell：
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python -m uvicorn app.main:app --host 127.0.0.1 --port 18080 --reload
+```
+
+Linux/macOS：
 
 ```bash
-docker compose down
+source .venv/bin/activate
+pip install -r requirements.txt
+python -m uvicorn app.main:app --host 127.0.0.1 --port 18080 --reload
 ```
 
-访问地址：
+后端访问：
 
-- 前端：http://localhost:15173
-- 后端：http://localhost:18080
-- API 文档：http://localhost:18080/docs
-- 后台统计：http://localhost:18080/admin/visits
+```text
+http://127.0.0.1:18080/docs
+http://127.0.0.1:18080/admin/visits
+```
+
+首次启动会自动建表、执行兼容迁移、创建默认账号。
+
+### 4. 启动前端开发服务器
+
+```bash
+cd frontend
+cp .env.development.example .env.development
+npm install
+npm run dev
+```
+
+开发访问：
+
+```text
+http://127.0.0.1:5173
+```
+
+## 前端生产构建
+
+如果前端和后端由同一个域名的 Nginx 代理，生产环境建议：
+
+```bash
+cd frontend
+cp .env.production.example .env.production
+npm install
+npm run build
+```
+
+`.env.production` 默认：
+
+```env
+VITE_API_BASE_URL=
+VITE_AMAP_JS_KEY=
+```
+
+空的 `VITE_API_BASE_URL` 表示浏览器会请求同域的 `/api`、`/uploads` 和 `/admin`，适合 Nginx 反向代理。
+
+如果你不使用 Nginx，而是前端直接访问后端端口，可以写成：
+
+```env
+VITE_API_BASE_URL=http://你的服务器IP:18080
+```
 
 ## 默认账号
 
-默认账号来自 `.env`：
+默认账号从 `.env` 读取：
 
 ```env
 ME_USERNAME=lxq
@@ -107,77 +155,24 @@ ZS_USERNAME=zs
 ZS_PASSWORD=0229
 ```
 
-部署前建议改掉默认密码。
+部署前请修改默认密码和 `JWT_SECRET`。
 
 ## 地图配置
 
-旅行攻略使用高德地图。
-
-`.env` 中可以配置：
+旅行攻略使用高德地图：
 
 ```env
 AMAP_JS_KEY=
 AMAP_WEB_SERVICE_KEY=
 ```
 
-说明：
+- `AMAP_JS_KEY`：前端地图展示。
+- `AMAP_WEB_SERVICE_KEY`：后端地址定位和 Excel 导入定位。
+- 也可以在网页里的“地图 Key 设置”里保存，保存后会写入数据库。
 
-- `AMAP_JS_KEY` 用于前端地图展示。
-- `AMAP_WEB_SERVICE_KEY` 用于后端地理编码。
-- 也可以在网页里的“地图 Key 设置”中填写，保存后会写入 PostgreSQL。
-- 没有配置 Key 时，旅行攻略仍能保存，但 Excel 导入时无法自动定位地址。
+## GitHub 提交
 
-## Excel 旅行攻略模板
-
-模板下载地址：
-
-```text
-http://localhost:18080/api/countdowns/travel-plan/template
-```
-
-模板包含：
-
-- `行程信息`
-- `行程节点`
-- `交通段`
-- `填写说明`
-
-导入要求：
-
-- `行程信息` 至少填写一行。
-- `行程节点` 使用 `城市/区域 + 详细地址` 定位，不需要手动填写经纬度。
-- `交通段` 支持 `地铁+步行`、`打车+步行` 等组合交通方式。
-- 如果没有配置 `AMAP_WEB_SERVICE_KEY`，导入会提示无法自动定位。
-
-## 干净数据说明
-
-当前仓库已清理：
-
-- `frontend/public/assets/photos/` 中的真实照片
-- `frontend/public/assets/music/` 中的真实音乐
-- `backend/uploads/` 中的上传文件
-- 前端 mock 照片和 mock 音乐已改为空数组
-
-仓库只保留：
-
-- `README.md`
-- `.gitkeep`
-- 目录结构
-
-如果你本地数据库里还有旧数据，提交 GitHub 不会包含这些数据；它们保存在 Docker volume 中。
-
-如需把本地 Docker 数据库也重置为空，请谨慎执行：
-
-```bash
-docker compose down -v
-docker compose up -d --build
-```
-
-`-v` 会删除 PostgreSQL 数据卷，执行后旧数据无法恢复。
-
-## 提交到 GitHub
-
-如果 `love-chronicle` 目录还不是 Git 仓库：
+如果还不是 Git 仓库：
 
 ```bash
 cd love-chronicle
@@ -193,226 +188,64 @@ git push -u origin main
 
 ```bash
 cd love-chronicle
-git status
+git status --ignored
 git add .
-git commit -m "Prepare clean GitHub version"
+git commit -m "Prepare non-docker deployment version"
 git push
 ```
 
-提交前建议检查：
-
-```bash
-git status --ignored
-```
-
-确认不要提交：
+提交前确认不要提交：
 
 - `.env`
 - `node_modules/`
 - `frontend/dist/`
-- `backend/uploads/` 中的真实文件
-- Docker volume 数据
+- `backend/.venv/`
+- `backend/uploads/` 里的真实上传文件
+- 数据库备份文件，例如 `*.sql`
+- 镜像或压缩包，例如 `*.tar`
 
-## Ubuntu 服务器部署
+## Ubuntu 无 Docker 部署
 
-以下以 Ubuntu 22.04/24.04 为例。
-
-### 1. 安装 Docker
-
-```bash
-sudo apt update
-sudo apt install -y ca-certificates curl gnupg git
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-```
-
-把当前用户加入 docker 组：
-
-```bash
-sudo usermod -aG docker $USER
-```
-
-退出 SSH 后重新登录。
-
-### 2. 拉取项目
-
-```bash
-git clone https://github.com/你的用户名/love-chronicle.git
-cd love-chronicle
-cp .env.example .env
-```
-
-编辑 `.env`：
-
-```bash
-nano .env
-```
-
-至少修改：
-
-```env
-POSTGRES_PASSWORD=换成强密码
-JWT_SECRET=换成随机长字符串
-ME_PASSWORD=换成你的密码
-HER_PASSWORD=换成她的密码
-ZS_PASSWORD=换成备用账号密码
-AMAP_JS_KEY=你的高德 JS Key
-AMAP_WEB_SERVICE_KEY=你的高德 Web 服务 Key
-```
-
-### 3. 启动服务
-
-```bash
-docker compose up -d --build
-docker compose ps
-docker compose logs -f
-```
-
-默认端口：
-
-- 前端：`15173`
-- 后端：`18080`
-- PostgreSQL：`15432`
-
-如果服务器开启了防火墙：
-
-```bash
-sudo ufw allow 15173/tcp
-sudo ufw allow 18080/tcp
-```
-
-### 4. 域名和 Nginx 反向代理
-
-推荐不要直接暴露后端端口给普通访问者。可以使用宿主机 Nginx：
-
-```bash
-sudo apt install -y nginx
-```
-
-示例配置：
-
-```nginx
-server {
-    server_name your-domain.com;
-
-    location / {
-        proxy_pass http://127.0.0.1:15173;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:18080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location /uploads/ {
-        proxy_pass http://127.0.0.1:18080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location /admin/ {
-        proxy_pass http://127.0.0.1:18080;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-启用 HTTPS：
-
-```bash
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d your-domain.com
-```
-
-### 5. 更新部署
-
-```bash
-cd love-chronicle
-git pull
-docker compose up -d --build
-```
-
-### 6. 备份数据
-
-备份 PostgreSQL：
-
-```bash
-docker compose exec postgres pg_dump -U love_user love_chronicle > backup.sql
-```
-
-备份上传文件：
-
-```bash
-tar -czf uploads-backup.tar.gz backend/uploads
-```
-
-恢复数据库：
-
-```bash
-cat backup.sql | docker compose exec -T postgres psql -U love_user love_chronicle
-```
-
-## 常见问题
-
-### 端口被占用
-
-修改 `.env`：
-
-```env
-FRONTEND_PORT=15173
-BACKEND_PORT=18080
-POSTGRES_PORT=15432
-```
-
-然后重启：
-
-```bash
-docker compose up -d --build
-```
-
-### Excel 导入无法定位
-
-请配置：
-
-```env
-AMAP_WEB_SERVICE_KEY=
-```
-
-或者在网页里的“地图 Key 设置”中保存高德 Web 服务 Key。
-
-### 上传文件丢失
-
-确认服务器上存在：
+请看详细文档：
 
 ```text
-backend/uploads/
+docs/UBUNTU_NO_DOCKER.md
 ```
 
-并且 `docker-compose.yml` 中保留：
+里面包含：
 
-```yaml
-./backend/uploads:/app/uploads
+- PostgreSQL + pgvector 安装
+- 数据库创建
+- Python 后端 venv 启动
+- systemd 常驻服务
+- 前端构建
+- Nginx 反向代理
+- HTTPS
+- 更新、备份、恢复
+
+## 常用命令
+
+后端健康检查：
+
+```bash
+curl http://127.0.0.1:18080/api/health
 ```
 
-## 当前版本注意事项
+前端构建：
 
-- 默认密码是明文配置，部署前必须修改。
-- 上传文件存储在服务器本地目录，后续可以扩展为对象存储。
-- 后台访问统计只允许 `LXQ` 管理员账号查看。
-- 提交 GitHub 前不要提交真实照片、音乐、`.env` 或数据库备份文件。
+```bash
+cd frontend
+npm run build
+```
+
+后端启动：
+
+```bash
+cd backend
+source .venv/bin/activate
+python -m uvicorn app.main:app --host 127.0.0.1 --port 18080
+```
+
+## 备注
+
+项目仍保留 `docker-compose.yml`，但现在主推荐路径是普通部署。服务器不能使用 Docker 时，直接按照 `docs/UBUNTU_NO_DOCKER.md` 部署即可。

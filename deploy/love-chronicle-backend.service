@@ -1,0 +1,19 @@
+[Unit]
+Description=Love Chronicle FastAPI backend
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/love-chronicle/backend
+EnvironmentFile=/opt/love-chronicle/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=HF_HOME=/opt/love-chronicle/.cache/huggingface
+Environment=TRANSFORMERS_CACHE=/opt/love-chronicle/.cache/huggingface
+ExecStart=/opt/love-chronicle/backend/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 18080 --proxy-headers
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
