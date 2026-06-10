@@ -8,9 +8,9 @@ import { useBlobObjectUrls } from "../hooks/useBlobObjectUrls";
 import { useConfirm } from "../hooks/useConfirm";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useLoveSettings } from "../hooks/useLoveSettings";
-import { deleteBlob, saveBlob } from "../storage/indexedDb";
+import { deleteBlob } from "../storage/indexedDb";
 import type { CheckinIndexStatus, CheckinItem, CheckinPhotoSearchResult } from "../types";
-import { isMotionMedia, prepareVisualMedia } from "../utils/media";
+import { prepareVisualMedia } from "../utils/media";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS } from "../utils/storageKeys";
 import EmojiTextArea from "./EmojiTextArea";
 import ImageLightbox from "./ImageLightbox";
@@ -107,9 +107,7 @@ export default function CheckinSection() {
 
   const loadRemoteCheckins = () => {
     api.checkins.list()
-      .then((remoteItems) => {
-        if (remoteItems.length > 0) setItems(remoteItems);
-      })
+      .then((remoteItems) => setItems(remoteItems))
       .catch(() => undefined);
   };
 
@@ -151,17 +149,12 @@ export default function CheckinSection() {
       try {
         const blob = await prepareVisualMedia(file, 1400, 0.78);
         setPendingUploads((current) => current.map((item) => item.id === pendingId ? { ...item, progress: 12, status: "uploading" } : item));
-        if (canEdit && user.role !== "guest") {
-          const preparedFile = new File([blob], file.name, { type: blob.type || file.type });
-          const uploaded = await uploadWithProgress("checkins", preparedFile, (progress) => {
-            setPendingUploads((current) => current.map((item) => item.id === pendingId ? { ...item, progress, status: "uploading" } : item));
-          });
-          setDraft((value) => ({ ...value, imageIds: [...value.imageIds, uploaded.url] }));
-        } else {
-          const id = `${isMotionMedia(file) ? "motion-" : ""}${crypto.randomUUID()}`;
-          await saveBlob("checkinImages", id, blob, file.name);
-          setDraft((value) => ({ ...value, imageIds: [...value.imageIds, id] }));
-        }
+        if (!canEdit || user.role === "guest") return;
+        const preparedFile = new File([blob], file.name, { type: blob.type || file.type });
+        const uploaded = await uploadWithProgress("checkins", preparedFile, (progress) => {
+          setPendingUploads((current) => current.map((item) => item.id === pendingId ? { ...item, progress, status: "uploading" } : item));
+        });
+        setDraft((value) => ({ ...value, imageIds: [...value.imageIds, uploaded.url] }));
         setPendingUploads((current) => current.map((item) => item.id === pendingId ? { ...item, progress: 100, status: "done" } : item));
         window.setTimeout(() => {
           URL.revokeObjectURL(previewUrl);
@@ -222,17 +215,13 @@ export default function CheckinSection() {
       try {
         const saved = await api.checkins.update(editingId, nextItem);
         setItems((current) => current.map((item) => item.id === editingId ? saved : item));
-      } catch {
-        setItems((current) => current.map((item) => item.id === editingId ? nextItem : item));
-      }
+      } catch { return; }
       setEditingId(null);
     } else {
       try {
         const saved = await api.checkins.create(baseItem);
         setItems((current) => [saved, ...current]);
-      } catch {
-        setItems((current) => [baseItem, ...current]);
-      }
+      } catch { return; }
     }
     setDraft(emptyDraft);
     setOpen(false);
@@ -263,12 +252,12 @@ export default function CheckinSection() {
   const removeCheckin = async (item: CheckinItem) => {
     const ok = await confirm({
       title: "确定要删除这条打卡回忆吗？",
-      description: "删除后，文字和本地照片都会从这里移除。",
+      description: "删除后，文字和照片记录都会从服务器移除。",
       confirmText: "确定删除",
       tone: "danger"
     });
     if (!ok) return;
-    await api.checkins.delete(item.id).catch(() => undefined);
+    await api.checkins.delete(item.id);
     await Promise.all((item.imageIds ?? []).filter((id) => !isRemoteMedia(id)).map((id) => deleteBlob("checkinImages", id)));
     setItems((current) => current.filter((target) => target.id !== item.id));
   };

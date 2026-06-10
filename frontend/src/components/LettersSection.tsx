@@ -92,7 +92,7 @@ export default function LettersSection() {
   const remove = async (letter: LetterItem) => {
     const ok = await confirm({ title: "确定要删除这封信吗？", description: "只有写信人本人可以删除。删除后这封信会从信箱里移除。", confirmText: "确定删除", tone: "danger" });
     if (!ok) return;
-    await api.letters.delete(letter.id).catch(() => undefined);
+    await api.letters.delete(letter.id);
     setReader(null);
     await load();
   };

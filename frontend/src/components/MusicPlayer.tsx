@@ -9,7 +9,7 @@ import { useAudioAnalyser } from "../hooks/useAudioAnalyser";
 import { useConfirm } from "../hooks/useConfirm";
 import { useBlobObjectUrls } from "../hooks/useBlobObjectUrls";
 import { useLocalStorage } from "../hooks/useLocalStorage";
-import { deleteBlob, getBlob, saveBlob } from "../storage/indexedDb";
+import { deleteBlob, getBlob } from "../storage/indexedDb";
 import type { MusicTrackAsset, PlayMode } from "../types";
 import { formatTime, readAudioDuration, readTrackMetadata } from "../utils/media";
 import { STORAGE_KEYS } from "../utils/storageKeys";
@@ -234,22 +234,11 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
     for (const file of files) {
       const { artist, title, cover } = await readTrackMetadata(file);
       const trackDuration = await readAudioDuration(file);
-      try {
-        const uploaded = await api.music.upload(file, { title, artist, duration: trackDuration, cover });
-        nextTracks.push({ ...uploaded, src: absoluteUrl(uploaded.src), coverSrc: absoluteUrl(uploaded.coverSrc), source: "uploaded" });
-      } catch {
-        const id = crypto.randomUUID();
-        await saveBlob("musicTracks", id, file, file.name);
-        const coverId = cover ? `cover-${id}` : undefined;
-        if (cover && coverId) await saveBlob("musicCovers", coverId, cover, "cover.jpg");
-        nextTracks.push({ id, fileId: id, coverId, title, artist, duration: trackDuration, source: "uploaded", createdAt: new Date().toISOString() });
-      }
+      const uploaded = await api.music.upload(file, { title, artist, duration: trackDuration, cover });
+      nextTracks.push({ ...uploaded, src: absoluteUrl(uploaded.src), coverSrc: absoluteUrl(uploaded.coverSrc), source: "uploaded" });
     }
 
-    const serverItems = nextTracks.filter((item) => !item.fileId);
-    const localItems = nextTracks.filter((item) => item.fileId);
-    if (serverItems.length > 0) setServerTracks((current) => [...current, ...serverItems]);
-    if (localItems.length > 0) setLocalTracks((current) => [...current, ...localItems]);
+    if (nextTracks.length > 0) setServerTracks((current) => [...current, ...nextTracks]);
     shouldPlayRef.current = true;
     setIndex(tracks.length);
     setPlaylistOpen(true);
@@ -264,7 +253,7 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
     });
     if (!ok) return;
     if (serverTracks.some((item) => item.id === track.id)) {
-      await api.music.delete(track.id).catch(() => undefined);
+      await api.music.delete(track.id);
       setServerTracks((current) => current.filter((item) => item.id !== track.id));
     } else {
       if (track.fileId) await deleteBlob("musicTracks", track.fileId);

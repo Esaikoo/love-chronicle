@@ -2,6 +2,7 @@ import dayjs from "dayjs";
 import { AnimatePresence, motion } from "framer-motion";
 import { CalendarHeart, HeartHandshake, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { mockCountdowns } from "../data/mockCountdowns";
 import { romanticQuotes } from "../data/romanticQuotes";
@@ -18,7 +19,7 @@ type EditableDate = "firstMeetDate" | "loveStartDate";
 export default function LoveDaysSection() {
   const today = dayjs();
   const { canEdit } = useAuth();
-  const [countdowns] = useLocalStorage<CountdownItem[]>(STORAGE_KEYS.COUNTDOWNS, mockCountdowns, LEGACY_STORAGE_KEYS.COUNTDOWNS);
+  const [countdowns, setCountdowns] = useLocalStorage<CountdownItem[]>(STORAGE_KEYS.COUNTDOWNS, mockCountdowns, LEGACY_STORAGE_KEYS.COUNTDOWNS);
   const [settings, setSettings] = useLoveSettings();
   const [editingDate, setEditingDate] = useState<EditableDate | null>(null);
   const [dateDraft, setDateDraft] = useState("");
@@ -40,6 +41,12 @@ export default function LoveDaysSection() {
     const timer = window.setInterval(() => setQuoteIndex((current) => (current + 1) % romanticQuotes.length), 6200);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    api.countdowns.list()
+      .then((remoteItems) => setCountdowns(remoteItems))
+      .catch(() => undefined);
+  }, [setCountdowns]);
 
   const openDateEditor = (key: EditableDate) => {
     if (!canEdit) return;

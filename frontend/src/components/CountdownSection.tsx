@@ -1,16 +1,16 @@
 import dayjs from "dayjs";
 import { Check, Edit3, ImagePlus, MapPinned, Plane, Plus, RotateCcw, Trash2, Upload } from "lucide-react";
 import { ChangeEvent, useEffect, useState } from "react";
-import { api } from "../api/client";
+import { absoluteUrl, api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { mockCountdowns } from "../data/mockCountdowns";
 import { useBlobObjectUrls } from "../hooks/useBlobObjectUrls";
 import { useConfirm } from "../hooks/useConfirm";
 import { useLocalStorage } from "../hooks/useLocalStorage";
-import { deleteBlob, saveBlob } from "../storage/indexedDb";
+import { deleteBlob } from "../storage/indexedDb";
 import type { CountdownItem, CountdownType } from "../types";
 import { daysUntil } from "../utils/date";
-import { isMotionMedia, prepareVisualMedia } from "../utils/media";
+import { prepareVisualMedia } from "../utils/media";
 import { profileOf } from "../utils/profiles";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS } from "../utils/storageKeys";
 import EmojiTextArea from "./EmojiTextArea";
@@ -40,6 +40,10 @@ function emojiFromText(text: string, fallback = "✨") {
   return text.match(/\p{Extended_Pictographic}/u)?.[0] ?? fallback;
 }
 
+function isRemoteMedia(id?: string) {
+  return Boolean(id && (/^https?:\/\//.test(id) || id.startsWith("/uploads/")));
+}
+
 function AuthorMini({ item }: { item: CountdownItem }) {
   const created = profileOf(item.createdBy);
   const updated = profileOf(item.updatedBy);
@@ -59,29 +63,15 @@ export default function CountdownSection() {
   const [travelFor, setTravelFor] = useState<CountdownItem | null>(null);
   const [draft, setDraft] = useState(emptyDraft);
   const { confirm, dialog } = useConfirm();
-  const coverIds = [...items.map((item) => item.coverImageId).filter(Boolean), draft.coverImageId].filter(Boolean) as string[];
+  const coverIds = [...items.map((item) => item.coverImageId).filter(Boolean), draft.coverImageId].filter((id) => !isRemoteMedia(id)) as string[];
   const coverUrls = useBlobObjectUrls("countdownCovers", coverIds);
+  const coverUrlOf = (id?: string) => isRemoteMedia(id) ? absoluteUrl(id) : id ? coverUrls[id] : "";
 
   useEffect(() => {
     api.countdowns.list()
-      .then(async (remoteItems) => {
-        if (remoteItems.length) {
-          setItems(remoteItems.map(fromRemote));
-          return;
-        }
-        if (canEdit && items.length) {
-          const seeded: CountdownItem[] = [];
-          for (const item of items) {
-            const saved = await api.countdowns.create(toRemote(item)).catch(() => null);
-            if (saved) seeded.push(fromRemote(saved));
-          }
-          if (seeded.length) setItems(seeded);
-        }
-      })
+      .then((remoteItems) => setItems(remoteItems.map(fromRemote)))
       .catch(() => undefined);
-    // Run once on mount; the local list is only a migration fallback.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [setItems]);
 
   const openCreate = () => {
     setDraft(emptyDraft);
@@ -98,21 +88,21 @@ export default function CountdownSection() {
     event.target.value = "";
     if (!file) return;
     if (draft.coverImageId) {
-      const ok = await confirm({ title: "要替换这张封面吗？", description: "旧封面会从本地移除。", confirmText: "替换封面" });
+      const ok = await confirm({ title: "要替换这张封面吗？", description: "保存后会使用新的服务器封面。", confirmText: "替换封面" });
       if (!ok) return;
-      await deleteBlob("countdownCovers", draft.coverImageId);
+      if (!isRemoteMedia(draft.coverImageId)) await deleteBlob("countdownCovers", draft.coverImageId);
     }
-    const id = `${isMotionMedia(file) ? "motion-" : ""}${crypto.randomUUID()}`;
     const blob = await prepareVisualMedia(file, 1400, 0.78);
-    await saveBlob("countdownCovers", id, blob, file.name);
-    setDraft((value) => ({ ...value, coverImageId: id }));
+    const preparedFile = new File([blob], file.name, { type: blob.type || file.type });
+    const uploaded = await api.upload("covers", preparedFile);
+    setDraft((value) => ({ ...value, coverImageId: uploaded.url }));
   };
 
   const removeCover = async () => {
     if (!draft.coverImageId) return;
     const ok = await confirm({ title: "确定删除这张封面吗？", description: "删除后会回到渐变卡片样式。", confirmText: "删除封面", tone: "danger" });
     if (!ok) return;
-    await deleteBlob("countdownCovers", draft.coverImageId);
+    if (!isRemoteMedia(draft.coverImageId)) await deleteBlob("countdownCovers", draft.coverImageId);
     setDraft((value) => ({ ...value, coverImageId: "" }));
   };
 
@@ -135,18 +125,18 @@ export default function CountdownSection() {
       updatedAt: editing.id ? now : undefined
     };
     const saved = editing.id
-      ? await api.countdowns.update(editing.id, toRemote(next)).catch(() => null)
-      : await api.countdowns.create(toRemote(next)).catch(() => null);
-    const finalItem = saved ? fromRemote(saved) : next;
+      ? await api.countdowns.update(editing.id, toRemote(next))
+      : await api.countdowns.create(toRemote(next));
+    const finalItem = fromRemote(saved);
     setItems((current) => [finalItem, ...current.filter((item) => item.id !== finalItem.id)]);
     setEditing(null);
   };
 
   const removeItem = async (item: CountdownItem) => {
-    const ok = await confirm({ title: "确定要删除这个约定吗？", description: "删除后，本地记录会被移除。", confirmText: "确定删除", tone: "danger" });
+    const ok = await confirm({ title: "确定要删除这个约定吗？", description: "删除后，这条记录会从服务器移除。", confirmText: "确定删除", tone: "danger" });
     if (!ok) return;
-    if (item.coverImageId) await deleteBlob("countdownCovers", item.coverImageId);
-    await api.countdowns.delete(item.id).catch(() => undefined);
+    if (item.coverImageId && !isRemoteMedia(item.coverImageId)) await deleteBlob("countdownCovers", item.coverImageId);
+    await api.countdowns.delete(item.id);
     setItems((current) => current.filter((target) => target.id !== item.id));
   };
 
@@ -168,8 +158,8 @@ export default function CountdownSection() {
       updatedBy: writerRole,
       updatedAt: now
     };
-    await api.countdowns.update(item.id, toRemote(nextItem)).catch(() => undefined);
-    setItems((current) => current.map((target) => target.id === item.id ? nextItem : target));
+    const saved = await api.countdowns.update(item.id, toRemote(nextItem));
+    setItems((current) => current.map((target) => target.id === item.id ? fromRemote(saved) : target));
   };
 
   return (
@@ -186,7 +176,7 @@ export default function CountdownSection() {
         {items.map((item) => {
           const left = daysUntil(item.targetDate);
           const completed = item.status === "completed";
-          const coverUrl = item.coverImageId ? coverUrls[item.coverImageId] : "";
+          const coverUrl = coverUrlOf(item.coverImageId);
           return (
             <article className={["love-card countdown-card", completed ? "completed" : "", left === 0 ? "today" : ""].join(" ")} key={item.id}>
               <div className="countdown-cover">{coverUrl ? <MediaPreview src={coverUrl} alt={item.title} /> : <div className="default-countdown-cover" aria-label="默认封面" />}</div>
@@ -229,7 +219,7 @@ export default function CountdownSection() {
           <label className="full">标题<input value={draft.title} onChange={(event) => setDraft((value) => ({ ...value, title: event.target.value }))} placeholder="去看一次海" /></label>
           <label className="full">描述<EmojiTextArea value={draft.description} onChange={(description) => setDraft((value) => ({ ...value, description }))} rows={4} placeholder="写下这个约定，也可以插入表情" /></label>
           <label className="upload-box full"><ImagePlus size={20} />上传封面或 Live 素材<input type="file" accept="image/*,video/*,.mov,.mp4,.m4v" onChange={uploadCover} /></label>
-          {draft.coverImageId && coverUrls[draft.coverImageId] && <MediaPreview className="upload-preview full" src={coverUrls[draft.coverImageId]} alt="约定封面预览" />}
+          {draft.coverImageId && coverUrlOf(draft.coverImageId) && <MediaPreview className="upload-preview full" src={coverUrlOf(draft.coverImageId)} alt="约定封面预览" />}
           {draft.coverImageId && <button className="ghost-button danger full" type="button" onClick={removeCover}><Trash2 size={16} />删除封面</button>}
         </div>
         <div className="modal-actions"><button className="primary-button" type="button" onClick={() => void save()}>保存这一刻</button></div>

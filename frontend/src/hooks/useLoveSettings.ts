@@ -1,17 +1,9 @@
+import { Dispatch, SetStateAction, useCallback, useEffect, useMemo } from "react";
+import { api } from "../api/client";
 import { siteConfig } from "../data/siteConfig";
+import type { LoveSettings } from "../types";
 import { STORAGE_KEYS } from "../utils/storageKeys";
 import { useLocalStorage } from "./useLocalStorage";
-import { useEffect } from "react";
-
-export type LoveSettings = {
-  firstMeetDate: string;
-  loveStartDate: string;
-  visualEffect: "hearts" | "meteors" | "petals" | "starlight" | "mixed" | "none";
-  nicknameMe: string;
-  nicknameHer: string;
-  avatarMe: string;
-  avatarHer: string;
-};
 
 const defaultSettings: LoveSettings = {
   firstMeetDate: siteConfig.firstMeetDate,
@@ -25,10 +17,37 @@ const defaultSettings: LoveSettings = {
 
 export function useLoveSettings() {
   const [storedSettings, setStoredSettings] = useLocalStorage<LoveSettings>(STORAGE_KEYS.SETTINGS, defaultSettings);
+  const settings = useMemo(() => ({ ...defaultSettings, ...storedSettings }), [storedSettings]);
+
   useEffect(() => {
-    if (storedSettings.nicknameMe === "WLY" && storedSettings.nicknameHer === "LXQ") {
-      setStoredSettings((current) => ({ ...current, nicknameMe: "LXQ", nicknameHer: "WLY" }));
+    let alive = true;
+    api.settings.love.get()
+      .then((remote) => {
+        if (alive) setStoredSettings({ ...defaultSettings, ...remote });
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [setStoredSettings]);
+
+  const setSettings = useCallback<Dispatch<SetStateAction<LoveSettings>>>((action) => {
+    setStoredSettings((current) => {
+      const merged = { ...defaultSettings, ...current };
+      const next = typeof action === "function" ? action(merged) : action;
+      const normalized = { ...merged, ...next };
+      window.setTimeout(() => {
+        void api.settings.love.update(normalized).catch(() => undefined);
+      }, 0);
+      return normalized;
+    });
+  }, [setStoredSettings]);
+
+  useEffect(() => {
+    if (settings.nicknameMe === "WLY" && settings.nicknameHer === "LXQ") {
+      setSettings((current) => ({ ...current, nicknameMe: "LXQ", nicknameHer: "WLY" }));
     }
-  }, [setStoredSettings, storedSettings.nicknameHer, storedSettings.nicknameMe]);
-  return [{ ...defaultSettings, ...storedSettings }, setStoredSettings] as const;
+  }, [setSettings, settings.nicknameHer, settings.nicknameMe]);
+
+  return [settings, setSettings] as const;
 }

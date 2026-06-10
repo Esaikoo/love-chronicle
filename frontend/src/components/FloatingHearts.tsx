@@ -1,4 +1,4 @@
-import type { LoveSettings } from "../hooks/useLoveSettings";
+import type { LoveSettings } from "../types";
 
 type FloatingHeartsProps = {
   effect: LoveSettings["visualEffect"];

@@ -1,4 +1,4 @@
-import type { CalendarNote, CheckinIndexStatus, CheckinItem, CheckinPhotoSearchResult, CountdownItem, HeartPhotoAsset, LetterItem, MusicTrackAsset, PreferenceItem, TravelImportResult, TravelPlan } from "../types";
+import type { CalendarNote, CheckinIndexStatus, CheckinItem, CheckinPhotoSearchResult, CountdownItem, HeartPhotoAsset, LetterItem, LoveSettings, MusicTrackAsset, PreferenceItem, TravelImportResult, TravelPlan } from "../types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:18080";
 const TOKEN_KEY = "love-chronicle:auth-token";
@@ -106,6 +106,10 @@ export const api = {
     summary: () => request<{ totalVisits: number; uniqueIps: number; modules: Array<{ moduleId: string; views: number; durationMs: number }>; recent: Array<{ ipAddress: string; role: string; username: string; path: string; eventType: string; moduleId: string; durationMs: number; visitedAt: string }> }>("/api/visits/summary")
   },
   settings: {
+    love: {
+      get: () => request<LoveSettings>("/api/settings/love"),
+      update: (payload: LoveSettings) => request<LoveSettings>("/api/settings/love", { method: "PUT", body: JSON.stringify(payload) })
+    },
     mapKeys: {
       get: () => request<{ amapJsKey: string; hasWebServiceKey: boolean }>("/api/settings/map-keys"),
       update: (payload: { amapJsKey: string; amapWebServiceKey: string }) => request<{ amapJsKey: string; hasWebServiceKey: boolean }>("/api/settings/map-keys", { method: "PUT", body: JSON.stringify(payload) })

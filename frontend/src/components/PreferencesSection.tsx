@@ -1,7 +1,7 @@
 import { DndContext, DragCancelEvent, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useDraggable, useDroppable, useSensor, useSensors } from "@dnd-kit/core";
-import dayjs from "dayjs";
 import { Edit3, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "../api/client";
 import { mockPreferences } from "../data/mockPreferences";
 import { useConfirm } from "../hooks/useConfirm";
 import { useLocalStorage } from "../hooks/useLocalStorage";
@@ -59,20 +59,20 @@ export default function PreferencesSection() {
   const { canEdit } = useAuth();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  const save = () => {
+  useEffect(() => {
+    api.preferences.list()
+      .then((remoteItems) => setItems(remoteItems))
+      .catch(() => undefined);
+  }, [setItems]);
+
+  const save = async () => {
     if (!draft.content.trim()) return;
     if (editingId) {
-      setItems((current) => current.map((item) => item.id === editingId ? { ...item, ...draft, content: draft.content.trim(), updatedAt: dayjs().toISOString() } : item));
+      const saved = await api.preferences.update(editingId, { ...draft, content: draft.content.trim() });
+      setItems((current) => current.map((item) => item.id === editingId ? saved : item));
     } else {
-      setItems((current) => [{
-        id: crypto.randomUUID(),
-        owner: draft.owner,
-        category: draft.category,
-        content: draft.content.trim(),
-        emoji: draft.emoji || "💗",
-        note: draft.note,
-        createdAt: dayjs().toISOString()
-      }, ...current]);
+      const saved = await api.preferences.create({ ...draft, content: draft.content.trim(), emoji: draft.emoji || "💗" });
+      setItems((current) => [saved, ...current]);
     }
     setEditingId(null);
     setDraft({ owner: "her", category: "生活", content: "", emoji: "💗", note: "" });
@@ -94,11 +94,12 @@ export default function PreferencesSection() {
   const removeItem = async (item: PreferenceItem) => {
     const ok = await confirm({
       title: "确定删除这个小喜好吗？",
-      description: "删除后，本地记录会被移除。",
+      description: "删除后，这条记录会从服务器移除。",
       confirmText: "确定删除",
       tone: "danger"
     });
     if (!ok) return;
+    await api.preferences.delete(item.id);
     setItems((current) => current.filter((target) => target.id !== item.id));
   };
 
@@ -110,7 +111,7 @@ export default function PreferencesSection() {
     const item = items.find((target) => target.id === event.active.id);
     const owner = event.over?.id as PreferenceOwner | undefined;
     setDragItem(null);
-    if (!item || !owner || owner === item.owner) return;
+    if (!canEdit || !item || !owner || owner === item.owner) return;
     setMoveChoice({ item, owner });
   };
 
@@ -118,12 +119,14 @@ export default function PreferencesSection() {
     setDragItem(null);
   };
 
-  const applyMoveChoice = (action: "move" | "copy") => {
+  const applyMoveChoice = async (action: "move" | "copy") => {
     if (!moveChoice) return;
     if (action === "move") {
-      setItems((current) => current.map((item) => item.id === moveChoice.item.id ? { ...item, owner: moveChoice.owner } : item));
+      const saved = await api.preferences.update(moveChoice.item.id, { ...moveChoice.item, owner: moveChoice.owner });
+      setItems((current) => current.map((item) => item.id === moveChoice.item.id ? saved : item));
     } else {
-      setItems((current) => [{ ...moveChoice.item, id: crypto.randomUUID(), owner: moveChoice.owner, createdAt: dayjs().toISOString() }, ...current]);
+      const saved = await api.preferences.create({ ...moveChoice.item, owner: moveChoice.owner });
+      setItems((current) => [saved, ...current]);
     }
     setMoveChoice(null);
   };
@@ -178,7 +181,7 @@ export default function PreferencesSection() {
           </label>
         </div>
         <div className="modal-actions">
-          <button className="primary-button" type="button" onClick={save}>
+          <button className="primary-button" type="button" onClick={() => void save()}>
             保存这一刻
           </button>
         </div>
@@ -199,8 +202,8 @@ export default function PreferencesSection() {
         <p className="local-tip">可以把「{moveChoice?.item.content}」移动到新栏目，也可以复制一份。</p>
         <div className="choice-actions">
           <button className="ghost-button" type="button" onClick={() => setMoveChoice(null)}>取消</button>
-          <button className="ghost-button" type="button" onClick={() => applyMoveChoice("copy")}>复制到这里</button>
-          <button className="primary-button" type="button" onClick={() => applyMoveChoice("move")}>移动到这里</button>
+          <button className="ghost-button" type="button" onClick={() => void applyMoveChoice("copy")}>复制到这里</button>
+          <button className="primary-button" type="button" onClick={() => void applyMoveChoice("move")}>移动到这里</button>
         </div>
       </Modal>
       {dialog}

@@ -497,13 +497,121 @@ CLIP_TEXT_MODEL=sentence-transformers/clip-ViT-B-32-multilingual-v1
 编辑：
 
 ```bash
-nano /opt/love-chronicle/.env
+vi /opt/love-chronicle/.env
 ```
 
 然后重启后端：
 
 ```bash
-sudo systemctl restart love-chronicle-backend
+pkill -f "uvicorn app.main:app"
+cd /opt/love-chronicle/backend
+source .venv/bin/activate
+nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 18080 --proxy-headers > /opt/love-chronicle/logs/backend.log 2>&1 &
 ```
 
 启动时种子逻辑会同步默认账号密码。
+
+## 15. 如果服务器没有 systemctl 或 nano
+
+有些轻量 Ubuntu 环境、面板环境或容器化主机不提供 `systemctl`，也可能没有 `nano`。这种情况下可以用下面的普通方式启动。
+
+### 编辑配置
+
+没有 `nano` 时可以用 `vi`：
+
+```bash
+vi /opt/love-chronicle/.env
+```
+
+如果也不熟悉 `vi`，可以先在本地编辑好 `.env`，再上传到服务器：
+
+```text
+/opt/love-chronicle/.env
+```
+
+### 后端临时启动
+
+适合先验证服务能不能跑：
+
+```bash
+cd /opt/love-chronicle/backend
+source .venv/bin/activate
+python -m uvicorn app.main:app --host 127.0.0.1 --port 18080
+```
+
+这个窗口关闭后服务也会停止。
+
+### 后端后台启动
+
+没有 `systemctl` 时可以先用 `nohup`：
+
+```bash
+cd /opt/love-chronicle/backend
+source .venv/bin/activate
+mkdir -p /opt/love-chronicle/logs
+nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 18080 --proxy-headers > /opt/love-chronicle/logs/backend.log 2>&1 &
+```
+
+查看日志：
+
+```bash
+tail -f /opt/love-chronicle/logs/backend.log
+```
+
+查看进程：
+
+```bash
+ps -ef | grep "uvicorn app.main:app"
+```
+
+停止进程：
+
+```bash
+pkill -f "uvicorn app.main:app"
+```
+
+### 推荐长期方案：Supervisor
+
+如果服务器允许安装软件，推荐用 Supervisor 管理后端，比 `nohup` 稳定。
+
+安装：
+
+```bash
+sudo apt update
+sudo apt install -y supervisor
+```
+
+创建配置：
+
+```bash
+sudo vi /etc/supervisor/conf.d/love-chronicle-backend.conf
+```
+
+写入：
+
+```ini
+[program:love-chronicle-backend]
+directory=/opt/love-chronicle/backend
+command=/opt/love-chronicle/backend/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 18080 --proxy-headers
+autostart=true
+autorestart=true
+stderr_logfile=/opt/love-chronicle/logs/backend.err.log
+stdout_logfile=/opt/love-chronicle/logs/backend.out.log
+environment=PYTHONUNBUFFERED="1",HF_HOME="/opt/love-chronicle/.cache/huggingface",TRANSFORMERS_CACHE="/opt/love-chronicle/.cache/huggingface"
+```
+
+启动：
+
+```bash
+sudo supervisorctl reread
+sudo supervisorctl update
+sudo supervisorctl start love-chronicle-backend
+```
+
+重启后端：
+
+```bash
+sudo supervisorctl restart love-chronicle-backend
+```
+
+前端仍然按文档执行 `npm run build`，然后把 `frontend/dist/` 同步到 Nginx 的站点目录即可。

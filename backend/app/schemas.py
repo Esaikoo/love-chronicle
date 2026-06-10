@@ -296,3 +296,17 @@ class MapKeySettingsIn(BaseModel):
 class MapKeySettingsOut(BaseModel):
     amapJsKey: str = ""
     hasWebServiceKey: bool = False
+
+
+class LoveSettingsIn(BaseModel):
+    firstMeetDate: str = ""
+    loveStartDate: str = ""
+    visualEffect: str = "mixed"
+    nicknameMe: str = "LXQ"
+    nicknameHer: str = "WLY"
+    avatarMe: str = ""
+    avatarHer: str = ""
+
+
+class LoveSettingsOut(LoveSettingsIn):
+    pass

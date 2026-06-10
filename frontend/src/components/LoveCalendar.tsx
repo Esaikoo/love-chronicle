@@ -1,15 +1,16 @@
 import dayjs from "dayjs";
 import { ChevronLeft, ChevronRight, Edit3, ImagePlus, Trash2 } from "lucide-react";
-import { ChangeEvent, ClipboardEvent, useMemo, useState } from "react";
+import { ChangeEvent, ClipboardEvent, useEffect, useMemo, useState } from "react";
+import { absoluteUrl, api } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { siteConfig } from "../data/siteConfig";
 import { useBlobObjectUrls } from "../hooks/useBlobObjectUrls";
 import { useConfirm } from "../hooks/useConfirm";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useLoveSettings } from "../hooks/useLoveSettings";
-import { deleteBlob, saveBlob } from "../storage/indexedDb";
+import { deleteBlob } from "../storage/indexedDb";
 import type { CalendarNote, CheckinItem, CountdownItem } from "../types";
-import { isMotionMedia, prepareVisualMedia } from "../utils/media";
+import { prepareVisualMedia } from "../utils/media";
 import { profileOf } from "../utils/profiles";
 import { LEGACY_STORAGE_KEYS, STORAGE_KEYS } from "../utils/storageKeys";
 import EmojiTextArea from "./EmojiTextArea";
@@ -23,6 +24,14 @@ type DateEvent = { label: string; emoji: string; kind: "anniversary" | "promise"
 
 function emojiFromText(text: string, fallback = "💗") {
   return text.match(/\p{Extended_Pictographic}/u)?.[0] ?? fallback;
+}
+
+function isRemoteMedia(id: string) {
+  return /^https?:\/\//.test(id) || id.startsWith("/uploads/");
+}
+
+function fromRemoteNote(note: CalendarNote & { imageUrls?: string[] }): CalendarNote {
+  return { ...note, imageIds: note.imageIds ?? note.imageUrls ?? [] };
 }
 
 function relativeDay(date: string) {
@@ -48,8 +57,8 @@ export default function LoveCalendar() {
   const showAdminTime = user.username?.toLowerCase() === "lxq";
   const [month, setMonth] = useState(dayjs().startOf("month"));
   const [notes, setNotes] = useLocalStorage<CalendarNote[]>(STORAGE_KEYS.CALENDAR_NOTES, [], LEGACY_STORAGE_KEYS.CALENDAR_NOTES);
-  const [countdowns] = useLocalStorage<CountdownItem[]>(STORAGE_KEYS.COUNTDOWNS, [], LEGACY_STORAGE_KEYS.COUNTDOWNS);
-  const [checkins] = useLocalStorage<CheckinItem[]>(STORAGE_KEYS.CHECKINS, [], LEGACY_STORAGE_KEYS.CHECKINS);
+  const [countdowns, setCountdowns] = useLocalStorage<CountdownItem[]>(STORAGE_KEYS.COUNTDOWNS, [], LEGACY_STORAGE_KEYS.COUNTDOWNS);
+  const [checkins, setCheckins] = useLocalStorage<CheckinItem[]>(STORAGE_KEYS.CHECKINS, [], LEGACY_STORAGE_KEYS.CHECKINS);
   const [selectedDate, setSelectedDate] = useState(dayjs().format("YYYY-MM-DD"));
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(emptyDraft);
@@ -70,8 +79,21 @@ export default function LoveCalendar() {
   };
   const selectedNote = noteMap.get(selectedDate);
   const selectedEvents = eventsForDate(selectedDate);
-  const previewIds = [...(selectedNote?.imageIds ?? []), ...(editing ? draft.imageIds : [])];
+  const previewIds = [...(selectedNote?.imageIds ?? []), ...(editing ? draft.imageIds : [])].filter((id) => !isRemoteMedia(id));
   const imageUrls = useBlobObjectUrls("calendarImages", previewIds);
+  const mediaUrlOf = (id: string) => isRemoteMedia(id) ? absoluteUrl(id) : imageUrls[id];
+
+  useEffect(() => {
+    api.calendar.list()
+      .then((remoteNotes) => setNotes(remoteNotes.map(fromRemoteNote)))
+      .catch(() => undefined);
+    api.countdowns.list()
+      .then((remoteItems) => setCountdowns(remoteItems))
+      .catch(() => undefined);
+    api.checkins.list()
+      .then((remoteItems) => setCheckins(remoteItems))
+      .catch(() => undefined);
+  }, [setCheckins, setCountdowns, setNotes]);
 
   const cells = useMemo(() => {
     const days = month.daysInMonth();
@@ -94,10 +116,10 @@ export default function LoveCalendar() {
   const addImages = async (files: FileList | File[]) => {
     const ids: string[] = [];
     for (const file of Array.from(files).filter((item) => item.type.startsWith("image/") || item.type.startsWith("video/"))) {
-      const id = `${isMotionMedia(file) ? "motion-" : ""}${crypto.randomUUID()}`;
       const blob = await prepareVisualMedia(file, 1400, 0.78);
-      await saveBlob("calendarImages", id, blob, file.name);
-      ids.push(id);
+      const preparedFile = new File([blob], file.name, { type: blob.type || file.type });
+      const uploaded = await api.upload("calendar", preparedFile);
+      ids.push(uploaded.url);
     }
     setDraft((current) => ({ ...current, imageIds: [...current.imageIds, ...ids] }));
   };
@@ -110,7 +132,7 @@ export default function LoveCalendar() {
     }
   };
 
-  const save = () => {
+  const save = async () => {
     if (user.role === "guest") return;
     const now = new Date().toISOString();
     const writerRole = user.role;
@@ -128,7 +150,11 @@ export default function LoveCalendar() {
       createdAt: selectedNote?.createdAt ?? now,
       updatedAt: now
     };
-    setNotes((current) => [...current.filter((note) => note.date !== selectedDate), nextNote]);
+    const saved = selectedNote
+      ? await api.calendar.update(selectedDate, nextNote)
+      : await api.calendar.create(nextNote);
+    const finalNote = fromRemoteNote(saved);
+    setNotes((current) => [...current.filter((note) => note.date !== selectedDate), finalNote]);
     setEditing(false);
   };
 
@@ -136,12 +162,13 @@ export default function LoveCalendar() {
     if (!selectedNote) return;
     const ok = await confirm({
       title: "确定要删除这一天的记录吗？",
-      description: "文字和照片都会从本地移除。",
+      description: "文字和照片记录都会从服务器移除。",
       confirmText: "确定删除",
       tone: "danger"
     });
     if (!ok) return;
-    await Promise.all((selectedNote.imageIds ?? []).map((id) => deleteBlob("calendarImages", id)));
+    await api.calendar.delete(selectedDate);
+    await Promise.all((selectedNote.imageIds ?? []).filter((id) => !isRemoteMedia(id)).map((id) => deleteBlob("calendarImages", id)));
     setNotes((current) => current.filter((note) => note.date !== selectedDate));
   };
 
@@ -153,7 +180,7 @@ export default function LoveCalendar() {
       tone: "danger"
     });
     if (!ok) return;
-    await deleteBlob("calendarImages", id);
+    if (!isRemoteMedia(id)) await deleteBlob("calendarImages", id);
     setDraft((current) => ({ ...current, imageIds: current.imageIds.filter((imageId) => imageId !== id) }));
   };
 
@@ -218,7 +245,7 @@ export default function LoveCalendar() {
                 <p>{selectedNote.text || "这一天还没有写下文字，但已经被好好记住了。"}</p>
                 <div className="note-tags">{selectedNote.tags.map((tag) => <span key={tag}>{tag}</span>)}</div>
                 {selectedNote.imageIds.length > 0 && (
-                  <div className="note-images">{selectedNote.imageIds.map((id) => imageUrls[id] && <MediaPreview key={id} src={imageUrls[id]} alt="评价照片" />)}</div>
+                  <div className="note-images">{selectedNote.imageIds.map((id) => mediaUrlOf(id) && <MediaPreview key={id} src={mediaUrlOf(id)} alt="评价照片" />)}</div>
                 )}
               </>
             ) : (
@@ -255,14 +282,14 @@ export default function LoveCalendar() {
             <div className="draft-image-list full">
               {draft.imageIds.map((id) => (
                 <button key={id} type="button" onClick={() => removeDraftImage(id)}>
-                  <span>{imageUrls[id] ? <MediaPreview src={imageUrls[id]} alt="评价照片" /> : "🖼️"}</span>
+                  <span>{mediaUrlOf(id) ? <MediaPreview src={mediaUrlOf(id)} alt="评价照片" /> : "🖼️"}</span>
                   <Trash2 size={15} />
                 </button>
               ))}
             </div>
           )}
         </div>
-        <div className="modal-actions"><button className="primary-button" type="button" onClick={save}>保存这一刻</button></div>
+        <div className="modal-actions"><button className="primary-button" type="button" onClick={() => void save()}>保存这一刻</button></div>
       </Modal>
       {dialog}
     </div>

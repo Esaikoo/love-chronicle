@@ -7,7 +7,7 @@ import { heartPhotos as mockHeartPhotos } from "../data/mockPhotos";
 import { useConfirm } from "../hooks/useConfirm";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { useResponsive } from "../hooks/useResponsive";
-import { deleteBlob, getBlob, saveBlob } from "../storage/indexedDb";
+import { deleteBlob, getBlob } from "../storage/indexedDb";
 import type { HeartPhotoAsset } from "../types";
 import { getHeartPoint } from "../utils/heartPath";
 import { isMotionMedia, prepareVisualMedia } from "../utils/media";
@@ -114,29 +114,14 @@ export default function HeartPhotoWall({ photos = mockHeartPhotos }: HeartPhotoW
   const saveFiles = async () => {
     if (pendingPhotos.length === 0) return;
     const serverItems: HeartPhotoAsset[] = [];
-    const localItems: HeartPhotoAsset[] = [];
     for (const pending of pendingPhotos) {
       const { file, title, description } = pending;
-      try {
-        const uploaded = await api.photos.upload(file, title, description);
-        serverItems.push({ ...uploaded, src: absoluteUrl(uploaded.src), source: "uploaded" });
-      } catch {
-        const id = crypto.randomUUID();
-        const blob = await prepareVisualMedia(file, 1600, 0.78);
-        await saveBlob("heartPhotos", id, blob, file.name);
-        localItems.push({
-          id,
-          fileId: id,
-          title,
-          description,
-          mediaType: isMotionMedia(file) ? "video" : "image",
-          source: "uploaded",
-          createdAt: new Date().toISOString()
-        });
-      }
+      const blob = await prepareVisualMedia(file, 1600, 0.78);
+      const preparedFile = new File([blob], file.name, { type: blob.type || file.type });
+      const uploaded = await api.photos.upload(preparedFile, title, description);
+      serverItems.push({ ...uploaded, src: absoluteUrl(uploaded.src), source: "uploaded" });
     }
     if (serverItems.length) setServerPhotos((current) => [...serverItems, ...current]);
-    if (localItems.length) setLocalPhotos((current) => [...localItems, ...current]);
     pendingPhotos.forEach((item) => URL.revokeObjectURL(item.previewUrl));
     setPendingPhotos([]);
     setShuffleTick((value) => value + 1);
@@ -169,7 +154,7 @@ export default function HeartPhotoWall({ photos = mockHeartPhotos }: HeartPhotoW
     if (!ok) return;
 
     if (serverPhotos.some((item) => item.id === photo.id)) {
-      await api.photos.delete(photo.id).catch(() => undefined);
+      await api.photos.delete(photo.id);
       setServerPhotos((current) => current.filter((item) => item.id !== photo.id));
       return;
     }
@@ -179,8 +164,8 @@ export default function HeartPhotoWall({ photos = mockHeartPhotos }: HeartPhotoW
 
   const updatePhoto = async (photo: HeartPhotoAsset) => {
     if (serverPhotos.some((item) => item.id === photo.id)) {
-      const updated = await api.photos.update(photo.id, { title: photo.title, description: photo.description }).catch(() => undefined);
-      if (updated) setServerPhotos((current) => current.map((item) => item.id === photo.id ? { ...item, ...updated, src: absoluteUrl(updated.src), source: "uploaded" } : item));
+      const updated = await api.photos.update(photo.id, { title: photo.title, description: photo.description });
+      setServerPhotos((current) => current.map((item) => item.id === photo.id ? { ...item, ...updated, src: absoluteUrl(updated.src), source: "uploaded" } : item));
       return;
     }
     setLocalPhotos((current) => current.map((item) => item.id === photo.id ? { ...item, title: photo.title, description: photo.description } : item));

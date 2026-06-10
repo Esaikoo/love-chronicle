@@ -96,6 +96,16 @@ export type CheckinPhotoSearchResult = {
   score: number;
 };
 
+export type LoveSettings = {
+  firstMeetDate: string;
+  loveStartDate: string;
+  visualEffect: "hearts" | "meteors" | "petals" | "starlight" | "mixed" | "none";
+  nicknameMe: string;
+  nicknameHer: string;
+  avatarMe: string;
+  avatarHer: string;
+};
+
 export type EnvelopeStyle = "sakura" | "cream" | "lavender" | "rose";
 
 export type LetterItem = {
