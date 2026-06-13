@@ -7,13 +7,14 @@ from sqlalchemy.orm import Session
 from ..auth import require_writer
 from ..database import get_db
 from ..models import SiteSetting, User
-from ..schemas import LoveSettingsIn, LoveSettingsOut, MapKeySettingsIn, MapKeySettingsOut
+from ..schemas import LoveSettingsIn, LoveSettingsOut, MapKeySettingsIn, MapKeySettingsOut, MusicSettingsIn, MusicSettingsOut
 
 router = APIRouter()
 
 AMAP_JS_KEY = "amap_js_key"
 AMAP_WEB_SERVICE_KEY = "amap_web_service_key"
 LOVE_SETTINGS = "love_settings"
+MUSIC_SETTINGS = "music_settings"
 
 DEFAULT_LOVE_SETTINGS = LoveSettingsOut(
     firstMeetDate="2023-08-20",
@@ -24,6 +25,7 @@ DEFAULT_LOVE_SETTINGS = LoveSettingsOut(
     avatarMe="",
     avatarHer="",
 )
+DEFAULT_MUSIC_SETTINGS = MusicSettingsOut(preferredTrackId="")
 
 
 def get_setting(db: Session, key: str) -> str:
@@ -51,6 +53,17 @@ def love_settings(db: Session) -> LoveSettingsOut:
     raw = get_setting(db, LOVE_SETTINGS)
     if not raw:
         return DEFAULT_LOVE_SETTINGS
+
+
+def music_settings(db: Session) -> MusicSettingsOut:
+    raw = get_setting(db, MUSIC_SETTINGS)
+    if not raw:
+        return DEFAULT_MUSIC_SETTINGS
+    try:
+        data = json.loads(raw)
+        return MusicSettingsOut(**{**DEFAULT_MUSIC_SETTINGS.model_dump(), **data})
+    except Exception:
+        return DEFAULT_MUSIC_SETTINGS
     try:
         data = json.loads(raw)
         return LoveSettingsOut(**{**DEFAULT_LOVE_SETTINGS.model_dump(), **data})
@@ -93,3 +106,18 @@ def update_love_settings(payload: LoveSettingsIn, db: Session = Depends(get_db),
     set_setting(db, LOVE_SETTINGS, json.dumps(next_value.model_dump(), ensure_ascii=False))
     db.commit()
     return love_settings(db)
+
+
+@router.get("/music", response_model=MusicSettingsOut)
+def get_music_settings(db: Session = Depends(get_db)):
+    return music_settings(db)
+
+
+@router.put("/music", response_model=MusicSettingsOut)
+def update_music_settings(payload: MusicSettingsIn, db: Session = Depends(get_db), user: User = Depends(require_writer)):
+    if user.role not in {"me", "her"}:
+        raise HTTPException(status_code=403, detail="Guest is read-only")
+    next_value = MusicSettingsOut(**payload.model_dump())
+    set_setting(db, MUSIC_SETTINGS, json.dumps(next_value.model_dump(), ensure_ascii=False))
+    db.commit()
+    return music_settings(db)

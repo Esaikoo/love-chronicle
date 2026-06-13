@@ -48,7 +48,10 @@ export default function LettersSection() {
     return () => window.clearTimeout(retryTimer);
   }, [load, user.role, user.username]);
 
-  const filtered = useMemo(() => letters, [letters]);
+  const filtered = useMemo(
+    () => [...letters].sort((a, b) => dayjs(a.createdAt).valueOf() - dayjs(b.createdAt).valueOf()),
+    [letters]
+  );
 
   const openCreate = () => {
     setEditing(null);

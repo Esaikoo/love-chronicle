@@ -310,3 +310,11 @@ class LoveSettingsIn(BaseModel):
 
 class LoveSettingsOut(LoveSettingsIn):
     pass
+
+
+class MusicSettingsIn(BaseModel):
+    preferredTrackId: str = ""
+
+
+class MusicSettingsOut(MusicSettingsIn):
+    pass

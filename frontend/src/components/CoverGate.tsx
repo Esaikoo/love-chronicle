@@ -9,7 +9,7 @@ type CoverGateProps = {
 };
 
 export default function CoverGate({ onEnter }: CoverGateProps) {
-  const { login } = useAuth();
+  const { enterGuest, login } = useAuth();
   const [leaving, setLeaving] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [username, setUsername] = useState("");
@@ -32,6 +32,11 @@ export default function CoverGate({ onEnter }: CoverGateProps) {
     }
   };
 
+  const enterAsGuest = () => {
+    enterGuest();
+    finishEnter();
+  };
+
   return (
     <motion.div className="cover-gate" initial={{ opacity: 1 }} animate={{ opacity: leaving ? 0 : 1, scale: leaving ? 1.12 : 1, filter: leaving ? "blur(10px)" : "blur(0px)" }} exit={{ opacity: 0 }} transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}>
       <div className="cover-aura" />
@@ -46,6 +51,9 @@ export default function CoverGate({ onEnter }: CoverGateProps) {
           <div className="cover-entry-grid single-entry">
             <motion.button className="cover-button" type="button" whileHover={{ scale: 1.04, y: -2 }} whileTap={{ scale: 0.97 }} onClick={() => setLoginOpen(true)}>
               打开这本纪念册
+            </motion.button>
+            <motion.button className="guest-button cover-guest-entry" type="button" whileHover={{ scale: 1.03, y: -2 }} whileTap={{ scale: 0.98 }} onClick={enterAsGuest}>
+              游客看看
             </motion.button>
           </div>
         ) : (

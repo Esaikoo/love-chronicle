@@ -5869,3 +5869,85 @@ input[type="file"][hidden],
     justify-content: flex-end;
   }
 }
+
+/* Latest UX fixes: one-letter-per-row mailbox and clearer music upload/preferred controls. */
+.envelope-grid {
+  grid-template-columns: 1fr !important;
+  width: min(1120px, 100%);
+  margin-inline: auto;
+}
+
+.envelope-card {
+  width: 100%;
+}
+
+.playlist-item {
+  grid-template-columns: minmax(0, 1fr) minmax(72px, 120px) 32px 32px;
+}
+
+.playlist-item .preferred-track.active {
+  color: #d946a0;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.playlist-item.active .preferred-track.active {
+  color: #fff6a6;
+}
+
+.playlist-item .delete-track {
+  color: #a73d74;
+}
+
+.music-upload-progress {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 240px) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  color: #8a3d68;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(255, 126, 179, 0.22);
+  border-radius: 999px;
+}
+
+.music-upload-progress span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.music-upload-progress i {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 182, 213, 0.38);
+}
+
+.music-upload-progress b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #ff6cae, #b388ff);
+  transition: width 180ms ease;
+}
+
+.music-upload-progress.failed {
+  color: #a43f5d;
+}
+
+@media (max-width: 768px) {
+  .playlist-item {
+    grid-template-columns: minmax(0, 1fr) 64px 30px 30px;
+  }
+
+  .music-upload-progress {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 86px;
+    grid-template-columns: minmax(0, 1fr) 96px auto;
+    z-index: 90;
+  }
+}

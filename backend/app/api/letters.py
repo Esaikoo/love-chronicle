@@ -1,7 +1,7 @@
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from ..auth import current_user, require_writer
@@ -52,7 +52,7 @@ def list_letters(
         query = query.filter(Letter.from_user.ilike(f"%{from_user.strip()}%"))
     if to_user.strip():
         query = query.filter(Letter.to_user.ilike(f"%{to_user.strip()}%"))
-    return [out(item) for item in query.order_by(func.coalesce(Letter.updated_at, Letter.created_at).desc()).all()]
+    return [out(item) for item in query.order_by(Letter.created_at.asc(), Letter.id.asc()).all()]
 
 
 @router.get("/{letter_id}", response_model=LetterOut)

@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { ListMusic, ListOrdered, Pause, Play, Repeat1, Shuffle, SkipBack, SkipForward, SlidersHorizontal, Trash2, Upload, Volume2, VolumeX } from "lucide-react";
+import { ListMusic, ListOrdered, Pause, Play, Repeat1, Shuffle, SkipBack, SkipForward, SlidersHorizontal, Star, Trash2, Upload, Volume2, VolumeX } from "lucide-react";
 import { ChangeEvent, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
-import { absoluteUrl, api } from "../api/client";
+import { absoluteUrl, api, uploadMusicWithProgress } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { musicTracks as mockTracks } from "../data/mockMusic";
 import type { AudioEnergy } from "../hooks/useAudioAnalyser";
@@ -69,6 +69,10 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
   const [playlistOpen, setPlaylistOpen] = useState(false);
   const [mobileExtrasOpen, setMobileExtrasOpen] = useState(false);
   const [hint, setHint] = useState("");
+  const [preferredTrackId, setPreferredTrackId] = useState("");
+  const [preferredApplied, setPreferredApplied] = useState(false);
+  const [musicSettingsLoaded, setMusicSettingsLoaded] = useState(false);
+  const [musicUpload, setMusicUpload] = useState<{ name: string; progress: number; active: boolean; error?: string } | null>(null);
   const { confirm, dialog } = useConfirm();
   const { start: startAnalyser, stop: stopAnalyser } = useAudioAnalyser(audioRef, onEnergy);
   const activeTrack = tracks[index];
@@ -77,6 +81,10 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
     api.music.list()
       .then((items) => setServerTracks(items.map((item) => ({ ...item, src: absoluteUrl(item.src), coverSrc: absoluteUrl(item.coverSrc), source: "uploaded" }))))
       .catch(() => setServerTracks([]));
+    api.settings.music.get()
+      .then((settings) => setPreferredTrackId(settings.preferredTrackId || ""))
+      .catch(() => undefined)
+      .finally(() => setMusicSettingsLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -167,6 +175,18 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
     }
   }, [activeTrack?.id, prepareTrack]);
 
+  useEffect(() => {
+    if (!musicSettingsLoaded || preferredApplied || tracks.length === 0) return;
+    const preferredIndex = preferredTrackId ? tracks.findIndex((track) => track.id === preferredTrackId) : -1;
+    const nextIndex = preferredIndex >= 0 ? preferredIndex : 0;
+    setIndex(nextIndex);
+    setPreferredApplied(true);
+    if (visible) {
+      shouldPlayRef.current = true;
+      void prepareTrack(tracks[nextIndex], true);
+    }
+  }, [musicSettingsLoaded, preferredApplied, preferredTrackId, prepareTrack, tracks, visible]);
+
   useEffect(() => () => {
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
   }, []);
@@ -182,6 +202,13 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
   useEffect(() => {
     if (autoPlayToken > 0) void attemptPlay();
   }, [attemptPlay, autoPlayToken]);
+
+  useEffect(() => {
+    if (visible && tracks.length > 0 && autoPlayToken === 0) {
+      const timer = window.setTimeout(() => void attemptPlay(), 320);
+      return () => window.clearTimeout(timer);
+    }
+  }, [attemptPlay, autoPlayToken, tracks.length, visible]);
 
   const pause = useCallback(() => {
     shouldPlayRef.current = false;
@@ -232,16 +259,30 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
 
     const nextTracks: MusicTrackAsset[] = [];
     for (const file of files) {
-      const { artist, title, cover } = await readTrackMetadata(file);
-      const trackDuration = await readAudioDuration(file);
-      const uploaded = await api.music.upload(file, { title, artist, duration: trackDuration, cover });
-      nextTracks.push({ ...uploaded, src: absoluteUrl(uploaded.src), coverSrc: absoluteUrl(uploaded.coverSrc), source: "uploaded" });
+      try {
+        const { artist, title, cover } = await readTrackMetadata(file);
+        const trackDuration = await readAudioDuration(file);
+        setMusicUpload({ name: file.name, progress: 4, active: true });
+        const uploaded = await uploadMusicWithProgress(file, { title, artist, duration: trackDuration, cover }, (progress) => {
+          setMusicUpload({ name: file.name, progress, active: progress < 100 });
+        });
+        nextTracks.push({ ...uploaded, src: absoluteUrl(uploaded.src), coverSrc: absoluteUrl(uploaded.coverSrc), source: "uploaded" });
+      } catch {
+        setMusicUpload({ name: file.name, progress: 100, active: false, error: "音乐上传失败，请稍后再试" });
+      }
     }
 
     if (nextTracks.length > 0) setServerTracks((current) => [...current, ...nextTracks]);
+    window.setTimeout(() => setMusicUpload(null), 800);
     shouldPlayRef.current = true;
     setIndex(tracks.length);
     setPlaylistOpen(true);
+  };
+
+  const setPreferredTrack = async (track: MusicTrackAsset) => {
+    if (!canEdit) return;
+    const saved = await api.settings.music.update({ preferredTrackId: track.id });
+    setPreferredTrackId(saved.preferredTrackId || track.id);
   };
 
   const deleteTrack = async (track: MusicTrackAsset) => {
@@ -259,6 +300,11 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
       if (track.fileId) await deleteBlob("musicTracks", track.fileId);
       if (track.coverId) await deleteBlob("musicCovers", track.coverId);
       setLocalTracks((current) => current.filter((item) => item.id !== track.id));
+    }
+    if (preferredTrackId === track.id) {
+      await api.settings.music.update({ preferredTrackId: "" }).catch(() => undefined);
+      setPreferredTrackId("");
+      setPreferredApplied(false);
     }
     setIndex(0);
   };
@@ -343,6 +389,14 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
           <input ref={fileInputRef} className="hidden-file-input" type="file" accept="audio/*,.m4a" multiple hidden onChange={addMusic} />
         </div>
 
+        {musicUpload && (
+          <div className={musicUpload.error ? "music-upload-progress failed" : "music-upload-progress"}>
+            <span>{musicUpload.error || `正在上传 ${musicUpload.name}`}</span>
+            <i><b style={{ width: `${musicUpload.progress}%` }} /></i>
+            <small>{musicUpload.progress}%</small>
+          </div>
+        )}
+
         <AnimatePresence>
           {mobileExtrasOpen && (
             <motion.div className="mobile-player-extras" initial={{ opacity: 0, y: 10, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.96 }}>
@@ -373,8 +427,13 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
                 <button className={trackIndex === index ? "playlist-item active" : "playlist-item"} type="button" key={track.id} onClick={() => selectTrack(trackIndex)}>
                   <span>{track.title}</span>
                   <small>{track.artist}</small>
+                  {canEdit && (
+                    <i className={preferredTrackId === track.id ? "preferred-track active" : "preferred-track"} role="button" tabIndex={0} title={preferredTrackId === track.id ? "首播歌曲" : "设为进入时首播"} aria-label={preferredTrackId === track.id ? "首播歌曲" : "设为进入时首播"} onClick={(event) => { event.stopPropagation(); void setPreferredTrack(track); }} onKeyDown={(event) => { if (event.key === "Enter") void setPreferredTrack(track); }}>
+                      <Star size={15} fill={preferredTrackId === track.id ? "currentColor" : "none"} />
+                    </i>
+                  )}
                   {canEdit && track.source === "uploaded" && (
-                    <i role="button" tabIndex={0} aria-label="删除音乐" onClick={(event) => { event.stopPropagation(); void deleteTrack(track); }} onKeyDown={(event) => { if (event.key === "Enter") void deleteTrack(track); }}>
+                    <i className="delete-track" role="button" tabIndex={0} aria-label="删除音乐" onClick={(event) => { event.stopPropagation(); void deleteTrack(track); }} onKeyDown={(event) => { if (event.key === "Enter") void deleteTrack(track); }}>
                       <Trash2 size={15} />
                     </i>
                   )}

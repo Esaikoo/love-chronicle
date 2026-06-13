@@ -110,6 +110,10 @@ export const api = {
       get: () => request<LoveSettings>("/api/settings/love"),
       update: (payload: LoveSettings) => request<LoveSettings>("/api/settings/love", { method: "PUT", body: JSON.stringify(payload) })
     },
+    music: {
+      get: () => request<{ preferredTrackId: string }>("/api/settings/music"),
+      update: (payload: { preferredTrackId: string }) => request<{ preferredTrackId: string }>("/api/settings/music", { method: "PUT", body: JSON.stringify(payload) })
+    },
     mapKeys: {
       get: () => request<{ amapJsKey: string; hasWebServiceKey: boolean }>("/api/settings/map-keys"),
       update: (payload: { amapJsKey: string; amapWebServiceKey: string }) => request<{ amapJsKey: string; hasWebServiceKey: boolean }>("/api/settings/map-keys", { method: "PUT", body: JSON.stringify(payload) })
@@ -211,6 +215,38 @@ export function uploadWithProgress(kind: string, file: File, onProgress: (progre
   return new Promise<{ url: string }>((resolve, reject) => {
     const request = new XMLHttpRequest();
     request.open("POST", `${API_BASE_URL}/api/uploads?kind=${encodeURIComponent(kind)}`);
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) request.setRequestHeader("Authorization", `Bearer ${token}`);
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.min(98, Math.round((event.loaded / event.total) * 100)));
+    };
+    request.onload = () => {
+      if (request.status >= 200 && request.status < 300) {
+        onProgress(100);
+        resolve(JSON.parse(request.responseText));
+      } else {
+        reject(new Error(request.responseText || "Upload failed"));
+      }
+    };
+    request.onerror = () => reject(new Error("Upload failed"));
+    request.send(form);
+  });
+}
+
+export function uploadMusicWithProgress(
+  file: File,
+  meta: { title: string; artist: string; duration?: number; cover?: Blob },
+  onProgress: (progress: number) => void
+) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("title", meta.title);
+  form.append("artist", meta.artist);
+  if (meta.duration) form.append("duration", String(Math.round(meta.duration)));
+  if (meta.cover) form.append("cover", meta.cover, "cover.jpg");
+  return new Promise<MusicTrackAsset>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open("POST", `${API_BASE_URL}/api/music`);
     const token = localStorage.getItem(TOKEN_KEY);
     if (token) request.setRequestHeader("Authorization", `Bearer ${token}`);
     request.upload.onprogress = (event) => {
