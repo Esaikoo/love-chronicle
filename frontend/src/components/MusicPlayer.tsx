@@ -26,6 +26,14 @@ export type MusicPlayerHandle = {
   pause: () => void;
 };
 
+type PlayerTrack = MusicTrackAsset & {
+  isUploading?: boolean;
+  uploadProgress?: number;
+  uploadError?: string;
+};
+
+const MUSIC_WANTS_PLAY_KEY = "love-chronicle:music-wants-play";
+
 const modeConfig: Record<PlayMode, { label: string; icon: typeof ListOrdered }> = {
   sequence: { label: "顺序播放", icon: ListOrdered },
   shuffle: { label: "随机播放", icon: Shuffle },
@@ -56,7 +64,8 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
   const { canEdit } = useAuth();
   const [localTracks, setLocalTracks] = useLocalStorage<MusicTrackAsset[]>(STORAGE_KEYS.MUSIC_TRACKS, []);
   const [serverTracks, setServerTracks] = useState<MusicTrackAsset[]>([]);
-  const tracks = useMemo(() => [...mockTracks, ...serverTracks, ...localTracks], [serverTracks, localTracks]);
+  const [uploadingTracks, setUploadingTracks] = useState<PlayerTrack[]>([]);
+  const tracks = useMemo<PlayerTrack[]>(() => [...mockTracks, ...serverTracks, ...localTracks, ...uploadingTracks], [serverTracks, localTracks, uploadingTracks]);
   const localCoverUrls = useBlobObjectUrls("musicCovers", tracks.map((track) => track.coverId).filter(Boolean) as string[]);
   const [index, setIndex] = useState(0);
   const [src, setSrc] = useState("");
@@ -72,6 +81,7 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
   const [preferredTrackId, setPreferredTrackId] = useState("");
   const [preferredApplied, setPreferredApplied] = useState(false);
   const [musicSettingsLoaded, setMusicSettingsLoaded] = useState(false);
+  const [musicLibraryLoaded, setMusicLibraryLoaded] = useState(false);
   const [musicUpload, setMusicUpload] = useState<{ name: string; progress: number; active: boolean; error?: string } | null>(null);
   const { confirm, dialog } = useConfirm();
   const { start: startAnalyser, stop: stopAnalyser } = useAudioAnalyser(audioRef, onEnergy);
@@ -80,7 +90,8 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
   useEffect(() => {
     api.music.list()
       .then((items) => setServerTracks(items.map((item) => ({ ...item, src: absoluteUrl(item.src), coverSrc: absoluteUrl(item.coverSrc), source: "uploaded" }))))
-      .catch(() => setServerTracks([]));
+      .catch(() => setServerTracks([]))
+      .finally(() => setMusicLibraryLoaded(true));
     api.settings.music.get()
       .then((settings) => setPreferredTrackId(settings.preferredTrackId || ""))
       .catch(() => undefined)
@@ -110,29 +121,52 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
     audio.muted = muted;
   }, [volume, muted]);
 
-  const startPlayback = useCallback(async () => {
+  const startPlayback = useCallback(async (allowMutedFallback = true) => {
     const audio = audioRef.current;
     if (!audio || !audio.currentSrc) return false;
     try {
       await audio.play();
       setPlaying(true);
       setHint("");
+      localStorage.setItem(MUSIC_WANTS_PLAY_KEY, "1");
       void startAnalyser().catch(() => undefined);
       return true;
     } catch (error) {
+      const errorName = (error as DOMException).name;
+      if (allowMutedFallback && errorName === "NotAllowedError") {
+        try {
+          audio.muted = true;
+          await audio.play();
+          setPlaying(true);
+          setHint("");
+          localStorage.setItem(MUSIC_WANTS_PLAY_KEY, "1");
+          void startAnalyser().catch(() => undefined);
+          window.setTimeout(() => {
+            audio.muted = muted;
+            audio.volume = volume;
+          }, 260);
+          return true;
+        } catch {
+          // Browser still blocked playback; fall back to the normal click-to-play hint.
+        }
+      }
       if ((error as DOMException).name !== "AbortError") shouldPlayRef.current = false;
       stopAnalyser();
       setPlaying(false);
       setHint("点击播放音乐");
       return false;
     }
-  }, [startAnalyser, stopAnalyser]);
+  }, [muted, startAnalyser, stopAnalyser, volume]);
 
   const prepareTrack = useCallback(async (track: MusicTrackAsset | undefined, autoplay: boolean) => {
     shouldPlayRef.current = autoplay;
     if (!track) {
       loadedTrackIdRef.current = "";
       setHint("添加一首音乐，让这里响起来。");
+      return false;
+    }
+    if ((track as PlayerTrack).isUploading) {
+      setHint("音乐还在上传中，稍等一下就能播放。");
       return false;
     }
     const currentAudio = audioRef.current;
@@ -176,7 +210,7 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
   }, [activeTrack?.id, prepareTrack]);
 
   useEffect(() => {
-    if (!musicSettingsLoaded || preferredApplied || tracks.length === 0) return;
+    if (!musicSettingsLoaded || !musicLibraryLoaded || preferredApplied || tracks.length === 0) return;
     const preferredIndex = preferredTrackId ? tracks.findIndex((track) => track.id === preferredTrackId) : -1;
     const nextIndex = preferredIndex >= 0 ? preferredIndex : 0;
     setIndex(nextIndex);
@@ -185,7 +219,7 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
       shouldPlayRef.current = true;
       void prepareTrack(tracks[nextIndex], true);
     }
-  }, [musicSettingsLoaded, preferredApplied, preferredTrackId, prepareTrack, tracks, visible]);
+  }, [musicLibraryLoaded, musicSettingsLoaded, preferredApplied, preferredTrackId, prepareTrack, tracks, visible]);
 
   useEffect(() => () => {
     if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
@@ -205,13 +239,17 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
 
   useEffect(() => {
     if (visible && tracks.length > 0 && autoPlayToken === 0) {
-      const timer = window.setTimeout(() => void attemptPlay(), 320);
+      const wantsPlay = localStorage.getItem(MUSIC_WANTS_PLAY_KEY);
+      const timer = window.setTimeout(() => {
+        if (wantsPlay !== "0") void attemptPlay();
+      }, 420);
       return () => window.clearTimeout(timer);
     }
   }, [attemptPlay, autoPlayToken, tracks.length, visible]);
 
   const pause = useCallback(() => {
     shouldPlayRef.current = false;
+    localStorage.setItem(MUSIC_WANTS_PLAY_KEY, "0");
     audioRef.current?.pause();
     stopAnalyser();
     setPlaying(false);
@@ -226,8 +264,9 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
 
   const selectTrack = (trackIndex: number) => {
     const track = tracks[trackIndex];
-    if (!track) return;
+    if (!track || track.isUploading) return;
     shouldPlayRef.current = true;
+    localStorage.setItem(MUSIC_WANTS_PLAY_KEY, "1");
     if (trackIndex === index) {
       if (audioRef.current) audioRef.current.currentTime = 0;
       void attemptPlay();
@@ -258,25 +297,46 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
     if (files.length === 0) return;
 
     const nextTracks: MusicTrackAsset[] = [];
+    setPlaylistOpen(true);
     for (const file of files) {
+      const tempId = `upload-${crypto.randomUUID()}`;
+      const fallbackTitle = file.name.replace(/\.[^.]+$/, "");
+      setUploadingTracks((current) => [
+        ...current,
+        {
+          id: tempId,
+          title: fallbackTitle,
+          artist: "正在上传",
+          source: "uploaded",
+          createdAt: new Date().toISOString(),
+          isUploading: true,
+          uploadProgress: 1
+        }
+      ]);
+
       try {
         const { artist, title, cover } = await readTrackMetadata(file);
         const trackDuration = await readAudioDuration(file);
+        setUploadingTracks((current) => current.map((track) => track.id === tempId ? { ...track, title, artist, uploadProgress: 4 } : track));
         setMusicUpload({ name: file.name, progress: 4, active: true });
         const uploaded = await uploadMusicWithProgress(file, { title, artist, duration: trackDuration, cover }, (progress) => {
           setMusicUpload({ name: file.name, progress, active: progress < 100 });
+          setUploadingTracks((current) => current.map((track) => track.id === tempId ? { ...track, uploadProgress: progress } : track));
         });
         nextTracks.push({ ...uploaded, src: absoluteUrl(uploaded.src), coverSrc: absoluteUrl(uploaded.coverSrc), source: "uploaded" });
+        setUploadingTracks((current) => current.filter((track) => track.id !== tempId));
       } catch {
+        setUploadingTracks((current) => current.map((track) => track.id === tempId ? { ...track, artist: "上传失败", uploadProgress: 100, uploadError: "上传失败", isUploading: true } : track));
         setMusicUpload({ name: file.name, progress: 100, active: false, error: "音乐上传失败，请稍后再试" });
+        window.setTimeout(() => setUploadingTracks((current) => current.filter((track) => track.id !== tempId)), 2200);
       }
     }
 
     if (nextTracks.length > 0) setServerTracks((current) => [...current, ...nextTracks]);
     window.setTimeout(() => setMusicUpload(null), 800);
     shouldPlayRef.current = true;
-    setIndex(tracks.length);
-    setPlaylistOpen(true);
+    localStorage.setItem(MUSIC_WANTS_PLAY_KEY, "1");
+    if (nextTracks.length > 0) setIndex(mockTracks.length + serverTracks.length);
   };
 
   const setPreferredTrack = async (track: MusicTrackAsset) => {
@@ -424,15 +484,16 @@ const MusicPlayer = forwardRef<MusicPlayerHandle, MusicPlayerProps>(function Mus
                 </div>
               )}
               {tracks.map((track, trackIndex) => (
-                <button className={trackIndex === index ? "playlist-item active" : "playlist-item"} type="button" key={track.id} onClick={() => selectTrack(trackIndex)}>
+                <button className={[trackIndex === index ? "playlist-item active" : "playlist-item", track.isUploading ? "uploading" : ""].join(" ")} type="button" key={track.id} onClick={() => selectTrack(trackIndex)} disabled={track.isUploading}>
                   <span>{track.title}</span>
-                  <small>{track.artist}</small>
-                  {canEdit && (
+                  <small>{track.isUploading ? `${track.uploadError || "上传中"} ${track.uploadProgress ?? 0}%` : track.artist}</small>
+                  {track.isUploading && <b className="playlist-upload-bar"><em style={{ width: `${track.uploadProgress ?? 0}%` }} /></b>}
+                  {canEdit && !track.isUploading && (
                     <i className={preferredTrackId === track.id ? "preferred-track active" : "preferred-track"} role="button" tabIndex={0} title={preferredTrackId === track.id ? "首播歌曲" : "设为进入时首播"} aria-label={preferredTrackId === track.id ? "首播歌曲" : "设为进入时首播"} onClick={(event) => { event.stopPropagation(); void setPreferredTrack(track); }} onKeyDown={(event) => { if (event.key === "Enter") void setPreferredTrack(track); }}>
                       <Star size={15} fill={preferredTrackId === track.id ? "currentColor" : "none"} />
                     </i>
                   )}
-                  {canEdit && track.source === "uploaded" && (
+                  {canEdit && !track.isUploading && track.source === "uploaded" && (
                     <i className="delete-track" role="button" tabIndex={0} aria-label="删除音乐" onClick={(event) => { event.stopPropagation(); void deleteTrack(track); }} onKeyDown={(event) => { if (event.key === "Enter") void deleteTrack(track); }}>
                       <Trash2 size={15} />
                     </i>

@@ -23,6 +23,8 @@ export default function LoveDaysSection() {
   const [settings, setSettings] = useLoveSettings();
   const [editingDate, setEditingDate] = useState<EditableDate | null>(null);
   const [dateDraft, setDateDraft] = useState("");
+  const [dateSaving, setDateSaving] = useState(false);
+  const [dateError, setDateError] = useState("");
   const [quoteIndex, setQuoteIndex] = useState(0);
   const firstMeetDate = settings.firstMeetDate ?? siteConfig.firstMeetDate;
   const loveStartDate = settings.loveStartDate ?? siteConfig.loveStartDate;
@@ -54,15 +56,25 @@ export default function LoveDaysSection() {
     setEditingDate(key);
   };
 
-  const saveDate = () => {
+  const saveDate = async () => {
     if (!editingDate) return;
-    setSettings({
+    setDateSaving(true);
+    setDateError("");
+    const nextSettings = {
       ...settings,
       firstMeetDate,
       loveStartDate,
       [editingDate]: dateDraft
-    });
-    setEditingDate(null);
+    };
+    try {
+      const saved = await api.settings.love.update(nextSettings);
+      setSettings(saved);
+      setEditingDate(null);
+    } catch {
+      setDateError("日期暂时没有保存到服务器，请确认已登录后再试。");
+    } finally {
+      setDateSaving(false);
+    }
   };
 
   const stats = [
@@ -115,12 +127,13 @@ export default function LoveDaysSection() {
 
       <Modal open={Boolean(editingDate)} title={editingDate === "loveStartDate" ? "设置在一起的日期" : "设置相识日期"} onClose={() => setEditingDate(null)}>
         <p className="local-tip">暂时想不起来也没关系。留空后会显示 -1，表示日期还没有设定。</p>
+        {dateError && <p className="form-error">{dateError}</p>}
         <div className="form-grid">
           <label className="full">{editingDate === "loveStartDate" ? "正式在一起的日期" : "第一次相遇的日期"}<input type="date" value={dateDraft} onChange={(event) => setDateDraft(event.target.value)} /></label>
         </div>
         <div className="modal-actions">
           <button className="ghost-button" type="button" onClick={() => setDateDraft("")}><Trash2 size={16} />暂时设为 -1</button>
-          <button className="primary-button" type="button" onClick={saveDate}>保存日期</button>
+          <button className="primary-button" type="button" onClick={saveDate} disabled={dateSaving}>{dateSaving ? "正在保存" : "保存日期"}</button>
         </div>
       </Modal>
     </motion.div>

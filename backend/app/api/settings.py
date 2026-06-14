@@ -53,6 +53,11 @@ def love_settings(db: Session) -> LoveSettingsOut:
     raw = get_setting(db, LOVE_SETTINGS)
     if not raw:
         return DEFAULT_LOVE_SETTINGS
+    try:
+        data = json.loads(raw)
+        return LoveSettingsOut(**{**DEFAULT_LOVE_SETTINGS.model_dump(), **data})
+    except Exception:
+        return DEFAULT_LOVE_SETTINGS
 
 
 def music_settings(db: Session) -> MusicSettingsOut:
@@ -64,11 +69,6 @@ def music_settings(db: Session) -> MusicSettingsOut:
         return MusicSettingsOut(**{**DEFAULT_MUSIC_SETTINGS.model_dump(), **data})
     except Exception:
         return DEFAULT_MUSIC_SETTINGS
-    try:
-        data = json.loads(raw)
-        return LoveSettingsOut(**{**DEFAULT_LOVE_SETTINGS.model_dump(), **data})
-    except Exception:
-        return DEFAULT_LOVE_SETTINGS
 
 
 @router.get("/map-keys", response_model=MapKeySettingsOut)
