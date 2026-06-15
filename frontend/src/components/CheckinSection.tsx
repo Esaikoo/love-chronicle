@@ -48,6 +48,7 @@ function emojiFromText(text: string, fallback = "📍") {
 function statusText(status?: string) {
   if (status === "ready") return "已整理";
   if (status === "failed") return "整理失败";
+  if (status === "pending") return "待整理";
   return "整理中";
 }
 
@@ -335,7 +336,7 @@ export default function CheckinSection() {
               <small>{indexStatus.running ? `正在整理 ${indexStatus.done}/${indexStatus.total}` : `已整理 ${indexStatus.done}/${indexStatus.total}，失败 ${indexStatus.failed}`}</small>
             </div>
             <button className="ghost-button" type="button" onClick={() => void reindexPhotos()} disabled={indexStatus.running}>
-              <RefreshCw size={15} />{indexStatus.running ? "整理中" : "重新整理全部照片"}
+              <RefreshCw size={15} />{indexStatus.running ? "整理中" : "整理全部照片"}
             </button>
           </details>
         )}

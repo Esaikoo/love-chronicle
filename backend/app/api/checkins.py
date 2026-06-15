@@ -6,7 +6,7 @@ from ..auth import require_writer
 from ..database import get_db
 from ..models import Checkin, CheckinImage, User
 from ..schemas import CheckinIn, CheckinOut, CheckinPhotoSearchOut, IndexStatusOut
-from ..utils.semantic_search import encode_text, index_checkin_images, reindex_all_checkin_images, status_snapshot
+from ..utils.semantic_search import encode_text, reindex_all_checkin_images, status_snapshot
 from ..utils.time import now_beijing
 
 router = APIRouter()
@@ -35,8 +35,17 @@ def list_checkins(db: Session = Depends(get_db)):
 
 
 @router.get("/photos/index-status", response_model=IndexStatusOut)
-def checkin_photo_index_status():
-    return IndexStatusOut(**status_snapshot())
+def checkin_photo_index_status(db: Session = Depends(get_db)):
+    snapshot = status_snapshot()
+    if snapshot.get("running"):
+        return IndexStatusOut(**snapshot)
+
+    total = db.query(func.count(CheckinImage.id)).scalar() or 0
+    done = db.query(func.count(CheckinImage.id)).filter(CheckinImage.embedding_status == "ready").scalar() or 0
+    failed = db.query(func.count(CheckinImage.id)).filter(CheckinImage.embedding_status == "failed").scalar() or 0
+    pending = max(total - done - failed, 0)
+    message = "照片已整理完成" if pending == 0 and total > 0 else ("还有照片待整理" if total > 0 else "还没有可整理的照片")
+    return IndexStatusOut(**{**snapshot, "running": False, "total": total, "done": done, "failed": failed, "message": message})
 
 
 @router.get("/photos/search", response_model=list[CheckinPhotoSearchOut])
@@ -92,7 +101,7 @@ def reindex_checkin_photos(background_tasks: BackgroundTasks, user: User = Depen
 
 
 @router.post("", response_model=CheckinOut)
-def create_checkin(payload: CheckinIn, background_tasks: BackgroundTasks, db: Session = Depends(get_db), user: User = Depends(require_writer)):
+def create_checkin(payload: CheckinIn, db: Session = Depends(get_db), user: User = Depends(require_writer)):
     item = Checkin(id=uuid4().hex, title=payload.title, location=payload.location, date=payload.date, emoji=payload.emoji, text=payload.text)
     item.created_by = user.role
     item.created_at = now_beijing()
@@ -100,12 +109,11 @@ def create_checkin(payload: CheckinIn, background_tasks: BackgroundTasks, db: Se
     db.add(item)
     db.commit()
     db.refresh(item)
-    background_tasks.add_task(index_checkin_images, [image.id for image in item.images])
     return out(item)
 
 
 @router.put("/{item_id}", response_model=CheckinOut)
-def update_checkin(item_id: str, payload: CheckinIn, background_tasks: BackgroundTasks, db: Session = Depends(get_db), user: User = Depends(require_writer)):
+def update_checkin(item_id: str, payload: CheckinIn, db: Session = Depends(get_db), user: User = Depends(require_writer)):
     item = db.get(Checkin, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Not found")
@@ -120,7 +128,6 @@ def update_checkin(item_id: str, payload: CheckinIn, background_tasks: Backgroun
     item.images = [CheckinImage(id=uuid4().hex, file_url=url, sort_order=index, is_primary=index == 0, embedding_status="pending") for index, url in enumerate(payload.imageUrls)]
     db.commit()
     db.refresh(item)
-    background_tasks.add_task(index_checkin_images, [image.id for image in item.images])
     return out(item)
 
 

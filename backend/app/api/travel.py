@@ -255,7 +255,7 @@ def geocode_address(city: str, district: str, address: str, key_override: str = 
     return TravelGeocodeOut(ok=True, longitude=longitude, latitude=latitude, formattedAddress=geocodes[0].get("formatted_address", keyword))
 
 
-def build_plan(db: Session, countdown_id: str, payload: TravelPlanIn, user: User, existing: TravelPlan | None = None) -> TravelPlan:
+def build_plan(db: Session, countdown_id: str, payload: TravelPlanIn, user: User, existing: TravelPlan | None = None, auto_geocode: bool = True) -> TravelPlan:
     now = now_beijing()
     plan = existing or TravelPlan(id=uuid4().hex, countdown_id=countdown_id, created_by=user.role, created_at=now)
     plan.travel_code = payload.travelCode
@@ -293,7 +293,7 @@ def build_plan(db: Session, countdown_id: str, payload: TravelPlanIn, user: User
             longitude = stop_payload.longitude
             latitude = stop_payload.latitude
             locate_text = (stop_payload.address or stop_payload.city or "").strip()
-            if locate_text:
+            if auto_geocode and locate_text:
                 geo = geocode_address(stop_payload.city, stop_payload.district, locate_text, amap_web_service_key(db))
                 if geo.ok:
                     longitude = geo.longitude
@@ -607,7 +607,7 @@ def import_errors_to_models(errors: list[dict[str, Any]]) -> list[TravelImportEr
     return [TravelImportErrorOut(**error) for error in errors]
 
 
-def parse_excel_plan(content: bytes, web_service_key: str = "") -> tuple[TravelPlanIn | None, list[dict[str, Any]]]:
+def parse_excel_plan(content: bytes, web_service_key: str = "", auto_geocode: bool = False) -> tuple[TravelPlanIn | None, list[dict[str, Any]]]:
     from openpyxl import load_workbook
 
     errors: list[dict[str, Any]] = []
@@ -658,7 +658,7 @@ def parse_excel_plan(content: bytes, web_service_key: str = "") -> tuple[TravelP
             city = str(cell(row, "城市") or cell(row, "城市/区域"))
             district = str(cell(row, "区县"))
             address = str(cell(row, "详细地址") or cell(row, "地点名称"))
-            if longitude is None or latitude is None:
+            if auto_geocode and (longitude is None or latitude is None):
                 geo = geocode_address(city, district, address, web_service_key)
                 if geo.ok:
                     longitude, latitude = geo.longitude, geo.latitude
@@ -754,7 +754,7 @@ async def import_travel_plan(
     db.add(job)
     db.commit()
     try:
-        payload, errors = parse_excel_plan(content, amap_web_service_key(db))
+        payload, errors = parse_excel_plan(content, amap_web_service_key(db), auto_geocode=False)
     except Exception as exc:
         errors = [{"sheet": "导入文件", "row": 0, "field": "Excel", "reason": str(exc), "suggestion": "请确认上传的是 travel_plan_template.xlsx 格式。"}]
         payload = None
@@ -770,9 +770,9 @@ async def import_travel_plan(
         return TravelImportOut(ok=False, message="已存在旅行攻略，已取消导入。")
     target_countdown_id = f"{countdown_id}-{uuid4().hex[:6]}" if existing and strategy == "copy" else countdown_id
     target_existing = None if strategy == "copy" else existing
-    plan = build_plan(db, target_countdown_id, payload, user, target_existing)
+    plan = build_plan(db, target_countdown_id, payload, user, target_existing, auto_geocode=False)
     job.status = "success"
     job.message = "导入完成"
     db.commit()
     db.refresh(plan)
-    return TravelImportOut(ok=True, plan=plan_out(plan), message="旅行攻略已生成。")
+    return TravelImportOut(ok=True, plan=plan_out(plan), message="旅行攻略已保存。没有坐标的地点可以稍后在编辑器里点“按地点定位”。")

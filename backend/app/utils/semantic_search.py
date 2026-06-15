@@ -68,8 +68,10 @@ def warm_models() -> None:
         update_status(message="正在准备本地语义模型")
         from huggingface_hub import snapshot_download
 
-        snapshot_download(IMAGE_MODEL_NAME)
-        snapshot_download(TEXT_MODEL_NAME)
+        if not Path(IMAGE_MODEL_NAME).expanduser().exists():
+            snapshot_download(IMAGE_MODEL_NAME)
+        if not Path(TEXT_MODEL_NAME).expanduser().exists():
+            snapshot_download(TEXT_MODEL_NAME)
         update_status(modelReady=True, message="语义模型已准备好")
     except Exception as exc:
         update_status(modelReady=False, message=f"模型准备失败：{str(exc)[:160]}")
