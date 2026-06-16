@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import MediaPreview from "./MediaPreview";
 
@@ -16,23 +17,34 @@ export default function ImageLightbox({ open, images, index, onIndexChange, onCl
     onIndexChange((index + direction + images.length) % images.length);
   };
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      if (images.length > 1 && event.key === "ArrowLeft") move(-1);
+      if (images.length > 1 && event.key === "ArrowRight") move(1);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, images.length, index, onClose]);
+
   const content = (
     <AnimatePresence>
-      {open && (
-        <motion.div className="lightbox" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <button className="icon-button lightbox-close" type="button" onClick={onClose} aria-label="关闭相册">
+      {open && images.length > 0 && (
+        <motion.div className="lightbox" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
+          <button className="icon-button lightbox-close" type="button" onClick={(event) => { event.stopPropagation(); onClose(); }} aria-label="关闭相册">
             <X size={20} />
           </button>
           {images.length > 1 && (
-            <button className="icon-button lightbox-prev" type="button" onClick={() => move(-1)} aria-label="上一张">
+            <button className="icon-button lightbox-prev" type="button" onClick={(event) => { event.stopPropagation(); move(-1); }} aria-label="上一张">
               <ChevronLeft size={22} />
             </button>
           )}
-          <motion.div className="lightbox-media" key={images[index]} initial={{ opacity: 0, x: 28 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -28 }}>
+          <motion.div className="lightbox-media" key={images[index]} initial={{ opacity: 0, x: 28 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -28 }} onClick={(event) => event.stopPropagation()}>
             <MediaPreview src={images[index]} alt="相册图片" expanded />
           </motion.div>
           {images.length > 1 && (
-            <button className="icon-button lightbox-next" type="button" onClick={() => move(1)} aria-label="下一张">
+            <button className="icon-button lightbox-next" type="button" onClick={(event) => { event.stopPropagation(); move(1); }} aria-label="下一张">
               <ChevronRight size={22} />
             </button>
           )}

@@ -902,7 +902,7 @@ function TravelTimeline({ day, selectedStop, onSelectStop, onOpenImages }: { day
             {images.length > 0 && (
               <div className="travel-stop-image-strip">
                 {images.slice(0, 4).map((image, imageIndex) => (
-                  <button type="button" key={`${image}-${imageIndex}`} onClick={() => onOpenImages(images, imageIndex)} aria-label={`查看${stop.name || "地点"}照片 ${imageIndex + 1}`}>
+                  <button type="button" key={`${image}-${imageIndex}`} onClick={(event) => { event.stopPropagation(); onOpenImages(images, imageIndex); }} aria-label={`查看${stop.name || "地点"}照片 ${imageIndex + 1}`}>
                     {isVideoAsset(image) ? <video src={image} muted playsInline preload="metadata" /> : <img src={image} alt="" />}
                   </button>
                 ))}
@@ -923,7 +923,7 @@ function TravelTimeline({ day, selectedStop, onSelectStop, onOpenImages }: { day
   );
 }
 
-function TravelEditor({ countdownId, draft, setDraft }: { countdownId: string; draft: TravelPlan; setDraft: (next: TravelPlan) => void }) {
+function TravelEditor({ countdownId, draft, setDraft, onOpenImages }: { countdownId: string; draft: TravelPlan; setDraft: (next: TravelPlan) => void; onOpenImages?: (images: string[], index: number) => void }) {
   const [activeDayNumber, setActiveDayNumber] = useState(draft.days[0]?.dayNumber ?? 1);
   const [activeEditPanel, setActiveEditPanel] = useState<"stops" | "legs">("stops");
   const activeDay = draft.days.find((day) => day.dayNumber === activeDayNumber) || draft.days[0];
@@ -1091,10 +1091,12 @@ function TravelEditor({ countdownId, draft, setDraft }: { countdownId: string; d
                   <div className="travel-stop-photo-grid">
                     {stopImages(stop).map((url, imageIndex) => (
                       <figure key={`${url}-${imageIndex}`}>
-                        {isVideoAsset(url)
-                          ? <video src={normalizeUrl(url)} muted playsInline preload="metadata" />
-                          : <img src={normalizeUrl(url)} alt={`${stop.name || "地点"}照片 ${imageIndex + 1}`} />}
-                        <button className="travel-stop-photo-delete" type="button" onClick={() => removeStopImage(activeDay.dayNumber, stop.order, imageIndex)} aria-label="删除这张地点照片">
+                        <button className="travel-stop-photo-preview" type="button" onClick={() => onOpenImages?.(stopImages(stop).map(normalizeUrl), imageIndex)} aria-label={`查看${stop.name || "地点"}照片 ${imageIndex + 1}`}>
+                          {isVideoAsset(url)
+                            ? <video src={normalizeUrl(url)} muted playsInline preload="metadata" />
+                            : <img src={normalizeUrl(url)} alt={`${stop.name || "地点"}照片 ${imageIndex + 1}`} />}
+                        </button>
+                        <button className="travel-stop-photo-delete" type="button" onClick={(event) => { event.stopPropagation(); removeStopImage(activeDay.dayNumber, stop.order, imageIndex); }} aria-label="删除这张地点照片">
                           <Trash2 size={13} />
                         </button>
                       </figure>
@@ -1249,7 +1251,7 @@ export default function TravelPlanWorkspace({ countdown, onClose }: TravelPlanWo
             )}
 
             {editing ? (
-              <TravelEditor countdownId={countdown.id} draft={draft} setDraft={setDraft} />
+              <TravelEditor countdownId={countdown.id} draft={draft} setDraft={setDraft} onOpenImages={(images, index) => setTravelLightbox({ images, index })} />
             ) : currentPlan ? (
               <>
                 <div className="travel-tabs">

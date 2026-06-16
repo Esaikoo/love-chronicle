@@ -639,6 +639,14 @@
   border: 2px solid rgba(255, 255, 255, 0.86);
   background: rgba(255, 241, 247, 0.72);
   box-shadow: 0 10px 22px rgba(126, 48, 105, 0.14);
+  cursor: zoom-in;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.travel-stop-image-strip button:hover {
+  transform: translateY(-2px) scale(1.04);
+  border-color: rgba(255, 126, 179, 0.72);
+  box-shadow: 0 16px 30px rgba(126, 48, 105, 0.2);
 }
 
 .travel-stop-image-strip img,
@@ -1215,6 +1223,17 @@
   min-width: 0;
 }
 
+.travel-stop-photo-preview {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  cursor: zoom-in;
+  overflow: hidden;
+}
+
 .travel-stop-photo-grid img,
 .travel-stop-photo-grid video {
   width: 100%;
@@ -1223,6 +1242,13 @@
   border: 1px solid rgba(255, 126, 179, 0.18);
   object-fit: cover;
   background: rgba(255, 241, 247, 0.82);
+  transition: transform 180ms ease, filter 180ms ease;
+}
+
+.travel-stop-photo-preview:hover img,
+.travel-stop-photo-preview:hover video {
+  transform: scale(1.04);
+  filter: saturate(1.08);
 }
 
 .travel-stop-photo-grid b {
@@ -3904,7 +3930,7 @@ input[type="range"] {
 .lightbox {
   position: fixed;
   inset: 0;
-  z-index: 140;
+  z-index: 13000;
   display: grid;
   place-items: center;
   padding: 60px 24px;
@@ -3930,7 +3956,7 @@ input[type="range"] {
 .lightbox-prev,
 .lightbox-next {
   position: fixed;
-  z-index: 72;
+  z-index: 13001;
 }
 
 .lightbox-close {
