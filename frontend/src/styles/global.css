@@ -1163,9 +1163,13 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
+  max-height: 238px;
+  overflow-y: auto;
+  padding-right: 2px;
 }
 
 .travel-stop-photo-grid figure {
+  position: relative;
   margin: 0;
   min-width: 0;
 }
@@ -1192,6 +1196,30 @@
   color: #fff;
   background: linear-gradient(135deg, var(--day-color), #b388ff);
   box-shadow: 0 8px 18px rgba(126, 48, 105, 0.18);
+}
+
+.travel-stop-photo-delete {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(255, 98, 151, 0.92), rgba(179, 136, 255, 0.86));
+  box-shadow: 0 10px 24px rgba(168, 56, 116, 0.22);
+  opacity: 0.92;
+  transform: scale(0.96);
+  transition: transform 160ms ease, opacity 160ms ease, box-shadow 160ms ease;
+}
+
+.travel-stop-photo-delete:hover {
+  opacity: 1;
+  transform: scale(1.04);
+  box-shadow: 0 14px 30px rgba(168, 56, 116, 0.28);
 }
 
 @media (max-width: 1280px) {

@@ -965,6 +965,13 @@ function TravelEditor({ countdownId, draft, setDraft }: { countdownId: string; d
     const imageUrls = [...stopImages(stop), ...uploadedUrls];
     updateStop(dayNumber, order, { imageUrl: imageUrls[0], imageUrls });
   };
+  const removeStopImage = (dayNumber: number, order: number, imageIndex: number) => {
+    const day = draft.days.find((item) => item.dayNumber === dayNumber);
+    const stop = day?.stops.find((item) => item.order === order);
+    if (!stop) return;
+    const imageUrls = stopImages(stop).filter((_, index) => index !== imageIndex);
+    updateStop(dayNumber, order, { imageUrl: imageUrls[0] || undefined, imageUrls });
+  };
   const removeStop = (dayNumber: number, order: number) => {
     const day = draft.days.find((item) => item.dayNumber === dayNumber);
     if (!day) return;
@@ -1071,14 +1078,16 @@ function TravelEditor({ countdownId, draft, setDraft }: { countdownId: string; d
               <div className="travel-stop-photo-field">
                 {stopImages(stop).length ? (
                   <div className="travel-stop-photo-grid">
-                    {stopImages(stop).slice(0, 4).map((url, imageIndex) => (
+                    {stopImages(stop).map((url, imageIndex) => (
                       <figure key={`${url}-${imageIndex}`}>
                         {isVideoAsset(url)
                           ? <video src={normalizeUrl(url)} muted playsInline preload="metadata" />
                           : <img src={normalizeUrl(url)} alt={`${stop.name || "地点"}照片 ${imageIndex + 1}`} />}
+                        <button className="travel-stop-photo-delete" type="button" onClick={() => removeStopImage(activeDay.dayNumber, stop.order, imageIndex)} aria-label="删除这张地点照片">
+                          <Trash2 size={13} />
+                        </button>
                       </figure>
                     ))}
-                    {stopImages(stop).length > 4 && <b>+{stopImages(stop).length - 4}</b>}
                   </div>
                 ) : <span><Camera size={18} />还没有地点照片</span>}
                 <label className="ghost-button travel-image-upload"><Camera size={14} />{stopImages(stop).length ? "继续添加照片" : "地点照片"}<input type="file" multiple accept="image/*,video/*,.mov,.mp4,.m4v" hidden onChange={(event) => uploadStopImage(event, activeDay.dayNumber, stop.order)} /></label>
