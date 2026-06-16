@@ -1,4 +1,9 @@
 from datetime import datetime, timedelta
+from functools import lru_cache
+import ipaddress
+import json
+from urllib.parse import quote
+from urllib.request import urlopen
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -18,6 +23,56 @@ def client_ip(request: Request) -> str:
     if forwarded:
         return forwarded.split(",", 1)[0].strip()
     return request.client.host if request.client else ""
+
+
+def normalize_ip(ip: str) -> str:
+    value = (ip or "").strip()
+    if value.startswith("::ffff:"):
+        value = value.removeprefix("::ffff:")
+    return value
+
+
+@lru_cache(maxsize=512)
+def ip_location(ip: str) -> str:
+    value = normalize_ip(ip)
+    if not value:
+        return "未知"
+    try:
+        parsed = ipaddress.ip_address(value)
+        if parsed.is_loopback:
+            return "本机"
+        if parsed.is_private:
+            return "内网"
+        if parsed.is_multicast or parsed.is_reserved or parsed.is_unspecified:
+            return "特殊地址"
+    except ValueError:
+        return "未知"
+    try:
+        with urlopen(f"http://ip-api.com/json/{quote(value)}?fields=status,country,regionName,city,query,message&lang=zh-CN", timeout=2.2) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        if data.get("status") != "success":
+            return data.get("message") or "未知"
+        parts = [data.get("country"), data.get("regionName"), data.get("city")]
+        return " ".join(part for part in parts if part) or "未知"
+    except Exception:
+        return "未知"
+
+
+def visit_item_out(item: AccessLog) -> dict:
+    return {
+        "id": item.id,
+        "ipAddress": item.ip_address,
+        "ipLocation": ip_location(item.ip_address),
+        "role": item.user_role,
+        "username": item.username,
+        "path": item.path,
+        "sessionId": item.session_id,
+        "eventType": item.event_type,
+        "moduleId": item.module_id,
+        "durationMs": item.duration_ms,
+        "userAgent": item.user_agent,
+        "visitedAt": item.visited_at,
+    }
 
 
 def require_admin_user(user: User = Depends(require_writer)) -> User:
@@ -130,22 +185,7 @@ def list_visits(
         "total": total,
         "limit": limit,
         "offset": offset,
-        "items": [
-            {
-                "id": item.id,
-                "ipAddress": item.ip_address,
-                "role": item.user_role,
-                "username": item.username,
-                "path": item.path,
-                "sessionId": item.session_id,
-                "eventType": item.event_type,
-                "moduleId": item.module_id,
-                "durationMs": item.duration_ms,
-                "userAgent": item.user_agent,
-                "visitedAt": item.visited_at,
-            }
-            for item in records
-        ],
+        "items": [visit_item_out(item) for item in records],
     }
 
 
@@ -175,6 +215,7 @@ def visit_summary(db: Session = Depends(get_db), user: User = Depends(require_ad
         "recent": [
             {
                 "ipAddress": item.ip_address,
+                "ipLocation": ip_location(item.ip_address),
                 "role": item.user_role,
                 "username": item.username,
                 "path": item.path,
@@ -216,13 +257,16 @@ def admin_visit_summary(db: Session = Depends(get_db), user: User = Depends(requ
             session_start[key] = item.visited_at
     by_ip: dict[str, dict] = {}
     for item in records:
-        row = by_ip.setdefault(item.ip_address, {
-            "ipAddress": item.ip_address,
-            "users": set(),
-            "visits": 0,
-            "durationMs": 0,
-            "lastSeen": item.visited_at,
-        })
+        if item.ip_address not in by_ip:
+            by_ip[item.ip_address] = {
+                "ipAddress": item.ip_address,
+                "ipLocation": ip_location(item.ip_address),
+                "users": set(),
+                "visits": 0,
+                "durationMs": 0,
+                "lastSeen": item.visited_at,
+            }
+        row = by_ip[item.ip_address]
         if item.username:
             row["users"].add(item.username)
         if item.event_type == "page_view":
@@ -236,6 +280,7 @@ def admin_visit_summary(db: Session = Depends(get_db), user: User = Depends(requ
         started_at = session_start.get(key, item.visited_at)
         online.append({
             "ipAddress": item.ip_address,
+            "ipLocation": ip_location(item.ip_address),
             "role": item.user_role,
             "username": item.username,
             "moduleId": item.module_id,
@@ -261,6 +306,7 @@ def admin_visit_summary(db: Session = Depends(get_db), user: User = Depends(requ
         "recent": [
             {
                 "ipAddress": item.ip_address,
+                "ipLocation": ip_location(item.ip_address),
                 "role": item.user_role,
                 "username": item.username,
                 "path": item.path,

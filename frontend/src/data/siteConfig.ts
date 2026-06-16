@@ -1,7 +1,7 @@
 export const siteConfig = {
   coupleName: "给她的小小纪念册",
   coverTitle: "A Little Chronicle",
-  coverSubtitle: "建议使用电脑端查看，细节会更完整。",
+  coverSubtitle: "建议使用电脑端查看，细节会更完整。记得打开声音。",
   firstMeetDate: "2023-08-20",
   loveStartDate: "2023-08-20",
   defaultAvatarMe: "",

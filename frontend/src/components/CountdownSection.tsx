@@ -196,7 +196,7 @@ export default function CountdownSection() {
               <strong className="days-left">{completed ? "已完成" : left > 0 ? `${left} 天后` : left === 0 ? "就是今天" : `已过 ${Math.abs(left)} 天`}</strong>
               {item.type === "travel" && (
                 <div className="travel-card-actions">
-                  <button className="ghost-button" type="button" onClick={() => setTravelFor(item)}><MapPinned size={16} />{canEdit ? "创建 / 编辑旅行攻略" : "查看攻略地图"}</button>
+                  <button className="ghost-button" type="button" onClick={() => setTravelFor(item)}><MapPinned size={16} />查看旅游攻略地图</button>
                   {canEdit && <button className="ghost-button" type="button" onClick={() => setTravelFor(item)}><Upload size={16} />导入攻略数据</button>}
                 </div>
               )}

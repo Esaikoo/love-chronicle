@@ -191,10 +191,10 @@ def visits_admin_page():
       <div class="card stat"><b id="moduleTime">0 分</b><span>模块停留</span></div>
     </section>
     <section class="grid">
-      <div class="card"><h2>在线用户</h2><table><thead><tr><th>IP</th><th>用户</th><th>当前模块</th><th>在线时长</th><th>最后心跳</th></tr></thead><tbody id="onlineRows"></tbody></table></div>
+      <div class="card"><h2>在线用户</h2><table><thead><tr><th>IP / 归属地</th><th>用户</th><th>当前模块</th><th>在线时长</th><th>最后心跳</th></tr></thead><tbody id="onlineRows"></tbody></table></div>
       <div class="card"><h2>模块热度</h2><div id="moduleRows"></div></div>
-      <div class="card"><h2>按 IP 统计</h2><table><thead><tr><th>IP</th><th>用户</th><th>访问</th><th>停留</th><th>最后访问</th></tr></thead><tbody id="ipRows"></tbody></table></div>
-      <div class="card"><h2>最近记录</h2><table><thead><tr><th>时间</th><th>IP / 用户</th><th>事件</th></tr></thead><tbody id="recentRows"></tbody></table></div>
+      <div class="card"><h2>按 IP 统计</h2><table><thead><tr><th>IP / 归属地</th><th>用户</th><th>访问</th><th>停留</th><th>最后访问</th></tr></thead><tbody id="ipRows"></tbody></table></div>
+      <div class="card"><h2>最近记录</h2><table><thead><tr><th>时间</th><th>IP / 归属地 / 用户</th><th>事件</th></tr></thead><tbody id="recentRows"></tbody></table></div>
       <div class="card full">
         <h2>全部访问记录</h2>
         <div class="filters">
@@ -210,7 +210,7 @@ def visits_admin_page():
           <button id="recordReset">全部</button>
         </div>
         <div class="scroll-table">
-          <table><thead><tr><th>时间</th><th>IP</th><th>用户</th><th>模块/事件</th><th>停留</th><th>页面</th><th>设备</th></tr></thead><tbody id="allRows"></tbody></table>
+          <table><thead><tr><th>时间</th><th>IP / 归属地</th><th>用户</th><th>模块/事件</th><th>停留</th><th>页面</th><th>设备</th></tr></thead><tbody id="allRows"></tbody></table>
         </div>
         <div class="pager">
           <select id="pageSize"><option value="50">50 条/页</option><option value="80" selected>80 条/页</option><option value="150">150 条/页</option><option value="300">300 条/页</option></select>
@@ -259,11 +259,11 @@ def visits_admin_page():
       document.getElementById("ipCount").textContent = data.uniqueIps;
       document.getElementById("visitCount").textContent = data.totalVisits;
       document.getElementById("moduleTime").textContent = fmt(data.totalModuleDurationMs);
-      document.getElementById("onlineRows").innerHTML = data.online.map(item => `<tr><td><span class="online-dot"></span>${item.ipAddress}</td><td>${item.username || "guest"}<br><span class="muted">${item.role}</span></td><td>${moduleNames[item.moduleId] || item.moduleId || "-"}</td><td>${fmt(item.onlineMs)}</td><td>${new Date(item.lastSeen).toLocaleString()}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">暂时没有在线用户</td></tr>`;
+      document.getElementById("onlineRows").innerHTML = data.online.map(item => `<tr><td><span class="online-dot"></span>${item.ipAddress}<br><span class="muted">${item.ipLocation || "未知"}</span></td><td>${item.username || "guest"}<br><span class="muted">${item.role}</span></td><td>${moduleNames[item.moduleId] || item.moduleId || "-"}</td><td>${fmt(item.onlineMs)}</td><td>${new Date(item.lastSeen).toLocaleString()}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">暂时没有在线用户</td></tr>`;
       const max = Math.max(1, ...data.modules.map(item => item.durationMs));
       document.getElementById("moduleRows").innerHTML = data.modules.map(item => `<p><b>${moduleNames[item.moduleId] || item.moduleId}</b> <span class="muted">${fmt(item.durationMs)} · ${item.views} 次</span></p><div class="bar"><i style="width:${Math.max(5, item.durationMs / max * 100)}%"></i></div>`).join("") || `<p class="muted">还没有模块停留数据</p>`;
-      document.getElementById("ipRows").innerHTML = data.byIp.map(item => `<tr><td>${item.ipAddress}</td><td>${item.users.join(", ")}</td><td>${item.visits}</td><td>${fmt(item.durationMs)}</td><td>${new Date(item.lastSeen).toLocaleString()}</td></tr>`).join("");
-      document.getElementById("recentRows").innerHTML = data.recent.map(item => `<tr><td>${new Date(item.visitedAt).toLocaleString()}</td><td>${item.ipAddress}<br><span class="muted">${item.username}</span></td><td>${item.eventType}${item.moduleId ? " · " + (moduleNames[item.moduleId] || item.moduleId) : ""}</td></tr>`).join("");
+      document.getElementById("ipRows").innerHTML = data.byIp.map(item => `<tr><td>${item.ipAddress}<br><span class="muted">${item.ipLocation || "未知"}</span></td><td>${item.users.join(", ")}</td><td>${item.visits}</td><td>${fmt(item.durationMs)}</td><td>${new Date(item.lastSeen).toLocaleString()}</td></tr>`).join("");
+      document.getElementById("recentRows").innerHTML = data.recent.map(item => `<tr><td>${new Date(item.visitedAt).toLocaleString()}</td><td>${item.ipAddress}<br><span class="muted">${item.ipLocation || "未知"}</span><br><span class="muted">${item.username}</span></td><td>${item.eventType}${item.moduleId ? " · " + (moduleNames[item.moduleId] || item.moduleId) : ""}</td></tr>`).join("");
       loadRecords();
     }
     async function loadRecords(reset = false) {
@@ -280,7 +280,7 @@ def visits_admin_page():
       if (!res.ok) return;
       const data = await res.json();
       recordsState.total = data.total || 0;
-      document.getElementById("allRows").innerHTML = (data.items || []).map(item => `<tr><td>${new Date(item.visitedAt).toLocaleString()}</td><td>${item.ipAddress}</td><td>${item.username}<br><span class="muted">${item.role}</span></td><td>${item.eventType}${item.moduleId ? " · " + (moduleNames[item.moduleId] || item.moduleId) : ""}</td><td>${fmt(item.durationMs)}</td><td>${item.path || "-"}</td><td class="muted">${(item.userAgent || "").slice(0, 120)}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">没有找到访问记录</td></tr>`;
+      document.getElementById("allRows").innerHTML = (data.items || []).map(item => `<tr><td>${new Date(item.visitedAt).toLocaleString()}</td><td>${item.ipAddress}<br><span class="muted">${item.ipLocation || "未知"}</span></td><td>${item.username}<br><span class="muted">${item.role}</span></td><td>${item.eventType}${item.moduleId ? " · " + (moduleNames[item.moduleId] || item.moduleId) : ""}</td><td>${fmt(item.durationMs)}</td><td>${item.path || "-"}</td><td class="muted">${(item.userAgent || "").slice(0, 120)}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">没有找到访问记录</td></tr>`;
       const currentPage = Math.floor(recordsState.offset / recordsState.limit) + 1;
       const pages = Math.max(1, Math.ceil(recordsState.total / recordsState.limit));
       document.getElementById("pageInfo").textContent = `第 ${currentPage} / ${pages} 页 · 共 ${recordsState.total} 条`;

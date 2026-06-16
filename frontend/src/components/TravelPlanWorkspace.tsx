@@ -879,7 +879,7 @@ function FallbackMap({ plan, activeDay, selectedStop, onSelectStop }: { plan: Tr
   );
 }
 
-function TravelTimeline({ day, selectedStop, onSelectStop }: { day: TravelDay; selectedStop?: string; onSelectStop: (stop: TravelStop) => void }) {
+function TravelTimeline({ day, selectedStop, onSelectStop, onOpenImages }: { day: TravelDay; selectedStop?: string; onSelectStop: (stop: TravelStop) => void; onOpenImages: (images: string[], index: number) => void }) {
   const legsByPair = new Map(getOrderedDayLegs(day).map((leg) => [`${leg.fromOrder}-${leg.toOrder}`, leg]));
   return (
     <div className="travel-timeline">
@@ -888,6 +888,7 @@ function TravelTimeline({ day, selectedStop, onSelectStop }: { day: TravelDay; s
         const Icon = stopIcons[stop.type] || Heart;
         const leg = day.stops[index + 1] ? legsByPair.get(`${stop.order}-${day.stops[index + 1].order}`) : undefined;
         const TransportIcon = leg ? transportIcons[primaryTransport(leg)] : Route;
+        const images = stopImages(stop).map(normalizeUrl);
         return (
           <div key={`${stop.order}-${stop.name}`}>
             <button className={selectedStop === stop.id ? "travel-stop-card active" : "travel-stop-card"} type="button" onClick={() => onSelectStop(stop)}>
@@ -898,6 +899,16 @@ function TravelTimeline({ day, selectedStop, onSelectStop }: { day: TravelDay; s
               {stop.recommendedFood && <em>推荐：{stop.recommendedFood}</em>}
               {stop.warning && <i><AlertTriangle size={13} />{stop.warning}</i>}
             </button>
+            {images.length > 0 && (
+              <div className="travel-stop-image-strip">
+                {images.slice(0, 4).map((image, imageIndex) => (
+                  <button type="button" key={`${image}-${imageIndex}`} onClick={() => onOpenImages(images, imageIndex)} aria-label={`查看${stop.name || "地点"}照片 ${imageIndex + 1}`}>
+                    {isVideoAsset(image) ? <video src={image} muted playsInline preload="metadata" /> : <img src={image} alt="" />}
+                  </button>
+                ))}
+                {images.length > 4 && <span>+{images.length - 4}</span>}
+              </div>
+            )}
             {leg && (
               <div className="travel-leg-card">
                 <TransportIcon size={15} />
@@ -1249,7 +1260,7 @@ export default function TravelPlanWorkspace({ countdown, onClose }: TravelPlanWo
                   <aside className="travel-left">
                     {visibleDays.map((day) => (
                       <div key={day.dayNumber}>
-                        <TravelTimeline day={day} selectedStop={selectedStop?.id} onSelectStop={selectStop} />
+                        <TravelTimeline day={day} selectedStop={selectedStop?.id} onSelectStop={selectStop} onOpenImages={(images, index) => setTravelLightbox({ images, index })} />
                         {day.stops.map((stop) => <span id={`travel-stop-${stop.dayNumber}-${stop.order}`} key={`anchor-${stop.order}`} />)}
                       </div>
                     ))}
